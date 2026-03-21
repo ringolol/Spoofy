@@ -1,0 +1,497 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		09FFCA969FA6759926E5ADD6 /* DNSCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000B /* DNSCache.swift */; };
+		3FEFF257708CE9D7C1472D22 /* ConnectionRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0006 /* ConnectionRelay.swift */; };
+		449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0003 /* HTTPParser.swift */; };
+		4BA56F99DB92ECEC3FD52A81 /* TLSDesyncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0008 /* TLSDesyncer.swift */; };
+		60DABCCCD7228765947F380D /* DoHResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000A /* DoHResolver.swift */; };
+		6C8525E6C3C24B6F0EBDEFD3 /* PatternMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0009 /* PatternMask.swift */; };
+		7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */; };
+		7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA87CBA2F5F2B4B00819091 /* ContentView.swift */; };
+		7FA87CBD2F5F2B4D00819091 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */; };
+		7FA87CC02F5F2B4D00819091 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */; };
+		9542604D3D1E3F43F900321B /* HTTPSHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0005 /* HTTPSHandler.swift */; };
+		9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */; };
+		AA00000100000001AABB000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000E /* SettingsView.swift */; };
+		AA00000100000001AABB000F /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000C /* AppSettings.swift */; };
+		AA00000100000001AABB0010 /* BackgroundAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */; };
+		BE8C26D69618E16F5A2EBA03 /* TLSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0007 /* TLSParser.swift */; };
+		CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0004 /* HTTPHandler.swift */; };
+		FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0002 /* ProxyServer.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7F84E1512F5F357600EA1BB8 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProxyManager.swift; sourceTree = "<group>"; };
+		7F84E1452F5F357600EA1BB8 /* PacketTunnel.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PacketTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7F84E1472F5F357600EA1BB8 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
+		7F84E14C2F5F357600EA1BB8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7F84E14D2F5F357600EA1BB8 /* PacketTunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PacketTunnel.entitlements; sourceTree = "<group>"; };
+		7F84E1552F5F370A00EA1BB8 /* Spoofy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Spoofy.entitlements; sourceTree = "<group>"; };
+		7FA87CB52F5F2B4B00819091 /* Spoofy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spoofy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoofyApp.swift; sourceTree = "<group>"; };
+		7FA87CBA2F5F2B4B00819091 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		7FE364DF2F6BAC66004F5832 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		AA00000200000001AABB0001 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0002 /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0003 /* HTTPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPParser.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0004 /* HTTPHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPHandler.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0005 /* HTTPSHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPSHandler.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0006 /* ConnectionRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRelay.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0007 /* TLSParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSParser.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0008 /* TLSDesyncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSDesyncer.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0009 /* PatternMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatternMask.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB000A /* DoHResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoHResolver.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB000B /* DNSCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSCache.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB000C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB000D /* VPNManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPNManager.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB000E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundAudioPlayer.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7FA87CB22F5F2B4B00819091 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		7F84E1462F5F357600EA1BB8 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				7F84E1472F5F357600EA1BB8 /* NetworkExtension.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		7F84E1492F5F357600EA1BB8 /* PacketTunnel */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000001AABB0001 /* PacketTunnelProvider.swift */,
+				AA00000300000001AABB0001 /* Proxy */,
+				AA00000300000001AABB0002 /* TLS */,
+				AA00000300000001AABB0003 /* DNS */,
+				7F84E14C2F5F357600EA1BB8 /* Info.plist */,
+				7F84E14D2F5F357600EA1BB8 /* PacketTunnel.entitlements */,
+			);
+			path = PacketTunnel;
+			sourceTree = "<group>";
+		};
+		7FA87CAC2F5F2B4B00819091 = {
+			isa = PBXGroup;
+			children = (
+				7FA87CB72F5F2B4B00819091 /* Spoofy */,
+				7F84E1492F5F357600EA1BB8 /* PacketTunnel */,
+				AA00000300000001AABB0004 /* Shared */,
+				7F84E1462F5F357600EA1BB8 /* Frameworks */,
+				7FA87CB62F5F2B4B00819091 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7FA87CB62F5F2B4B00819091 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7FA87CB52F5F2B4B00819091 /* Spoofy.app */,
+				7F84E1452F5F357600EA1BB8 /* PacketTunnel.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7FA87CB72F5F2B4B00819091 /* Spoofy */ = {
+			isa = PBXGroup;
+			children = (
+				7FE364DF2F6BAC66004F5832 /* Info.plist */,
+				7F84E1552F5F370A00EA1BB8 /* Spoofy.entitlements */,
+				7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */,
+				7FA87CBA2F5F2B4B00819091 /* ContentView.swift */,
+				AA00000200000001AABB000D /* VPNManager.swift */,
+				AA00000200000001AABB000E /* SettingsView.swift */,
+				7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */,
+				7FA87CBE2F5F2B4D00819091 /* Preview Content */,
+				30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */,
+				AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */,
+			);
+			path = Spoofy;
+			sourceTree = "<group>";
+		};
+		7FA87CBE2F5F2B4D00819091 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		AA00000300000001AABB0001 /* Proxy */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000001AABB0002 /* ProxyServer.swift */,
+				AA00000200000001AABB0003 /* HTTPParser.swift */,
+				AA00000200000001AABB0004 /* HTTPHandler.swift */,
+				AA00000200000001AABB0005 /* HTTPSHandler.swift */,
+				AA00000200000001AABB0006 /* ConnectionRelay.swift */,
+			);
+			path = Proxy;
+			sourceTree = "<group>";
+		};
+		AA00000300000001AABB0002 /* TLS */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000001AABB0007 /* TLSParser.swift */,
+				AA00000200000001AABB0008 /* TLSDesyncer.swift */,
+				AA00000200000001AABB0009 /* PatternMask.swift */,
+			);
+			path = TLS;
+			sourceTree = "<group>";
+		};
+		AA00000300000001AABB0003 /* DNS */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000001AABB000A /* DoHResolver.swift */,
+				AA00000200000001AABB000B /* DNSCache.swift */,
+			);
+			path = DNS;
+			sourceTree = "<group>";
+		};
+		AA00000300000001AABB0004 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000001AABB000C /* AppSettings.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7FA87CB42F5F2B4B00819091 /* Spoofy */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7FA87CC32F5F2B4D00819091 /* Build configuration list for PBXNativeTarget "Spoofy" */;
+			buildPhases = (
+				7FA87CB12F5F2B4B00819091 /* Sources */,
+				7FA87CB22F5F2B4B00819091 /* Frameworks */,
+				7FA87CB32F5F2B4B00819091 /* Resources */,
+				7F84E1512F5F357600EA1BB8 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Spoofy;
+			productName = Spoofy;
+			productReference = 7FA87CB52F5F2B4B00819091 /* Spoofy.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7FA87CAD2F5F2B4B00819091 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					7FA87CB42F5F2B4B00819091 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+				};
+			};
+			buildConfigurationList = 7FA87CB02F5F2B4B00819091 /* Build configuration list for PBXProject "Spoofy" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 7FA87CAC2F5F2B4B00819091;
+			productRefGroup = 7FA87CB62F5F2B4B00819091 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7FA87CB42F5F2B4B00819091 /* Spoofy */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7FA87CB32F5F2B4B00819091 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7FA87CC02F5F2B4D00819091 /* Preview Assets.xcassets in Resources */,
+				7FA87CBD2F5F2B4D00819091 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7FA87CB12F5F2B4B00819091 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */,
+				7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */,
+				AA00000100000001AABB000E /* SettingsView.swift in Sources */,
+				AA00000100000001AABB000F /* AppSettings.swift in Sources */,
+				9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */,
+				FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */,
+				449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */,
+				CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */,
+				9542604D3D1E3F43F900321B /* HTTPSHandler.swift in Sources */,
+				3FEFF257708CE9D7C1472D22 /* ConnectionRelay.swift in Sources */,
+				BE8C26D69618E16F5A2EBA03 /* TLSParser.swift in Sources */,
+				4BA56F99DB92ECEC3FD52A81 /* TLSDesyncer.swift in Sources */,
+				6C8525E6C3C24B6F0EBDEFD3 /* PatternMask.swift in Sources */,
+				60DABCCCD7228765947F380D /* DoHResolver.swift in Sources */,
+				09FFCA969FA6759926E5ADD6 /* DNSCache.swift in Sources */,
+				AA00000100000001AABB0010 /* BackgroundAudioPlayer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		7FA87CC12F5F2B4D00819091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		7FA87CC22F5F2B4D00819091 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7FA87CC42F5F2B4D00819091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Spoofy/Spoofy.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Spoofy/Preview Content\"";
+				DEVELOPMENT_TEAM = 3X3PS34G68;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Spoofy/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rnglol.Spoofy;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7FA87CC52F5F2B4D00819091 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Spoofy/Spoofy.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Spoofy/Preview Content\"";
+				DEVELOPMENT_TEAM = 3X3PS34G68;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Spoofy/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rnglol.Spoofy;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7FA87CB02F5F2B4B00819091 /* Build configuration list for PBXProject "Spoofy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7FA87CC12F5F2B4D00819091 /* Debug */,
+				7FA87CC22F5F2B4D00819091 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7FA87CC32F5F2B4D00819091 /* Build configuration list for PBXNativeTarget "Spoofy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7FA87CC42F5F2B4D00819091 /* Debug */,
+				7FA87CC52F5F2B4D00819091 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 7FA87CAD2F5F2B4B00819091 /* Project object */;
+}

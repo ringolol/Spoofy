@@ -1,0 +1,242 @@
+import SwiftUI
+
+struct SettingsView: View {
+    @State private var profiles: [SpoofProfile] = []
+    @State private var portText: String = "8090"
+
+    private let settings = AppSettings.shared
+
+    var body: some View {
+        Form {
+            Section("Profiles") {
+                ForEach(customProfiles) { profile in
+                    profileRow(profile)
+                }
+                .onDelete(perform: deleteCustomProfiles)
+                .onMove(perform: moveCustomProfiles)
+
+                if let def = defaultProfile {
+                    NavigationLink {
+                        ProfileEditView(profileID: def.id)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(def.name)
+                                    .font(.body)
+                                Text("All traffic")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(def.splitMode.displayName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Button {
+                    addProfile()
+                } label: {
+                    Label("Add Profile", systemImage: "plus")
+                }
+            }
+
+            Section("Advanced") {
+                HStack {
+                    Text("Proxy Port")
+                    Spacer()
+                    TextField("Port", text: $portText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                        .onChange(of: portText) { newValue in
+                            let filtered = String(newValue.filter { $0.isNumber }.prefix(5))
+                            if filtered != newValue { portText = filtered }
+                            if let port = UInt16(filtered), port >= 1024 {
+                                settings.proxyPort = port
+                            }
+                        }
+                }
+            }
+        }
+        .navigationTitle("Settings")
+        .toolbar {
+            EditButton()
+        }
+        .onAppear { reload() }
+    }
+
+    private var customProfiles: [SpoofProfile] {
+        profiles.filter { !$0.isDefault }
+    }
+
+    private var defaultProfile: SpoofProfile? {
+        profiles.first { $0.isDefault }
+    }
+
+    private func reload() {
+        profiles = settings.profiles
+        portText = "\(settings.proxyPort)"
+    }
+
+    private func profileRow(_ profile: SpoofProfile) -> some View {
+        NavigationLink {
+            ProfileEditView(profileID: profile.id)
+        } label: {
+            HStack {
+                Toggle("", isOn: toggleBinding(for: profile))
+                    .labelsHidden()
+                    .fixedSize()
+
+                VStack(alignment: .leading) {
+                    Text(profile.name.isEmpty ? "New Profile" : profile.name)
+                        .font(.body)
+                        .foregroundStyle(profile.name.isEmpty ? .secondary : .primary)
+                    let count = profile.domainPatterns.count
+                    Text("\(count) domain\(count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .opacity(profile.isEnabled ? 1 : 0.5)
+
+                Spacer()
+
+                Text(profile.splitMode.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .opacity(profile.isEnabled ? 1 : 0.5)
+            }
+        }
+    }
+
+    private func toggleBinding(for profile: SpoofProfile) -> Binding<Bool> {
+        Binding(
+            get: { profiles.first { $0.id == profile.id }?.isEnabled ?? false },
+            set: { newValue in
+                if let idx = profiles.firstIndex(where: { $0.id == profile.id }) {
+                    profiles[idx].isEnabled = newValue
+                    saveProfiles()
+                }
+            }
+        )
+    }
+
+    private func addProfile() {
+        let newProfile = SpoofProfile(
+            id: UUID(),
+            name: "",
+            isEnabled: true,
+            domainPatterns: [],
+            splitMode: .none,
+            chunkSize: 5,
+            tlsRecordFragmentation: false,
+            dohEnabled: false,
+            dohServerURL: "https://1.1.1.1/dns-query",
+            isDefault: false
+        )
+        let defaultIndex = profiles.firstIndex { $0.isDefault } ?? profiles.endIndex
+        profiles.insert(newProfile, at: defaultIndex)
+        saveProfiles()
+    }
+
+    private func deleteCustomProfiles(at offsets: IndexSet) {
+        let custom = customProfiles
+        let idsToDelete = offsets.map { custom[$0].id }
+        profiles.removeAll { idsToDelete.contains($0.id) }
+        saveProfiles()
+    }
+
+    private func moveCustomProfiles(from source: IndexSet, to destination: Int) {
+        var custom = customProfiles
+        custom.move(fromOffsets: source, toOffset: destination)
+        let def = profiles.filter { $0.isDefault }
+        profiles = custom + def
+        saveProfiles()
+    }
+
+    private func saveProfiles() {
+        settings.profiles = profiles
+    }
+}
+
+// MARK: - Profile Edit
+
+struct ProfileEditView: View {
+    let profileID: UUID
+
+    @State private var profile: SpoofProfile = SpoofProfile.makeDefault()
+    @State private var domainText: String = ""
+
+    private let settings = AppSettings.shared
+
+    var body: some View {
+        Form {
+            if !profile.isDefault {
+                Section("Name") {
+                    TextField("Profile Name", text: $profile.name)
+                }
+            }
+
+            Section("TLS Fragmentation") {
+                Picker("Split Mode", selection: $profile.splitMode) {
+                    ForEach(SplitMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+
+                if profile.splitMode == .chunk {
+                    Stepper("Chunk Size: \(profile.chunkSize)", value: $profile.chunkSize, in: 1...1000)
+                }
+
+                Toggle("TLS Record Fragmentation", isOn: $profile.tlsRecordFragmentation)
+            }
+
+            Section("DNS over HTTPS") {
+                Toggle("Enable DoH", isOn: $profile.dohEnabled)
+
+                if profile.dohEnabled {
+                    TextField("DoH Server URL", text: $profile.dohServerURL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+            }
+
+            if !profile.isDefault {
+                Section {
+                    TextEditor(text: $domainText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 100)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("Domains")
+                } footer: {
+                    Text("One pattern per line. Examples: *.example.com, example.*, *.youtube.*")
+                }
+            }
+        }
+        .navigationTitle(profile.isDefault ? "Master" : profile.name)
+        .onAppear {
+            if let found = settings.profiles.first(where: { $0.id == profileID }) {
+                profile = found
+                domainText = found.domainPatterns.joined(separator: "\n")
+            }
+        }
+        .onChange(of: profile) { _ in save() }
+        .onChange(of: domainText) { newValue in
+            profile.domainPatterns = newValue
+                .components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+    }
+
+    private func save() {
+        var all = settings.profiles
+        if let idx = all.firstIndex(where: { $0.id == profileID }) {
+            all[idx] = profile
+            settings.profiles = all
+        }
+    }
+}
