@@ -47,7 +47,7 @@ endif
 	sed -i '' 's/"versionDescription": "[^"]*"/"versionDescription": "$(DESCRIPTION)"/' "$(ALTSOURCE)"; \
 	sed -i '' 's|releases/download/v[^/]*/|releases/download/v$(VERSION)/|' "$(ALTSOURCE)"; \
 	echo "Updated altsource.json: version=$(VERSION), date=$(TODAY), downloadURL=v$(VERSION)"
-	@git add "$(ALTSOURCE)" "$(PROJECT)/project.pbxproj" "$(IPA_PATH)" && \
+	@git add "$(ALTSOURCE)" "$(PROJECT)/project.pbxproj" && \
 	git commit -m "Release v$(VERSION)" && git push
 	@gh release create "v$(VERSION)" "$(IPA_PATH)" --title "v$(VERSION)" --generate-notes
 	@echo "Released v$(VERSION) on GitHub"
