@@ -64,7 +64,11 @@ final class AppSettings {
         get {
             guard let data = defaults.data(forKey: "spoofProfiles"),
                   let decoded = try? JSONDecoder().decode([SpoofProfile].self, from: data) else {
-                return [SpoofProfile.makeDefault()]
+                let defaultProfiles = [SpoofProfile.makeDefault()]
+                if let data = try? JSONEncoder().encode(defaultProfiles) {
+                    defaults.set(data, forKey: "spoofProfiles")
+                }
+                return defaultProfiles
             }
             return decoded
         }

@@ -15,6 +15,7 @@ final class DoHResolver {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 5
         config.timeoutIntervalForResource = 5
+        config.connectionProxyDictionary = [:] // Bypass tunnel proxy to avoid circular dependency
         self.session = URLSession(configuration: config)
         self.cache = DNSCache()
     }
