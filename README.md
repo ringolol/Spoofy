@@ -33,7 +33,7 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 
 ### Proxy Port
 
-The port on which the local proxy server listens. Default is `8090`. You can change it to any value between `1024` and `65535`. Only change this if the default port conflicts with something else.
+The port on which the local proxy server listens. Default is `8090`.
 
 ### Profiles
 
@@ -41,7 +41,7 @@ Spoofy uses a profile system to apply different bypass strategies to different d
 
 #### Master Profile
 
-The **Master** (default) profile applies to all traffic that doesn't match any other profile. It is always present and cannot be deleted. Configure this with settings that work for all of your sites.
+The **Master** (default) profile applies to all traffic that doesn't match any other profile.
 
 #### Custom Profiles
 
@@ -103,8 +103,6 @@ You need to manually configure your iPhone's Wi-Fi proxy settings to route traff
 8. Tap **Save**
 
 ### Disabling the Proxy
-
-When you stop using Spoofy, remember to disable the proxy:
 
 1. Go to **Settings → Wi-Fi → ⓘ (your network) → HTTP Proxy**
 2. Change back to **Off**
