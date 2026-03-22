@@ -18,7 +18,6 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 2. When an HTTPS connection is made, the proxy intercepts the TLS ClientHello
 3. The ClientHello is fragmented using the configured split strategy so that DPI cannot reconstruct the SNI field from a single packet
 4. Each fragment is sent as a separate TCP packet (`TCP_NODELAY`) to defeat reassembly
-5. The remaining traffic is relayed transparently
 
 ## Features
 
