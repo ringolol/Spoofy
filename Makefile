@@ -19,9 +19,7 @@ ipa:
 	rm -f "$(IPA_PATH)"; \
 	zip -r "$(IPA_PATH)" Payload; \
 	rm -rf Payload; \
-	SIZE=$$(stat -f%z "$(IPA_PATH)"); \
-	sed -i '' "s/\"size\": [0-9]*/\"size\": $$SIZE/" "$(ARCHIVE_DIR)/altsource.json"; \
-	echo "Created $(IPA_PATH) ($$SIZE bytes) and updated altsource.json"
+	echo "Created $(IPA_PATH)"
 
 release: ipa
 ifndef VERSION
@@ -30,7 +28,9 @@ endif
 ifndef DESCRIPTION
 	$(error DESCRIPTION is required. Usage: make release VERSION=1.1 DESCRIPTION="Bug fixes")
 endif
-	@sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' "$(ALTSOURCE)"; \
+	@SIZE=$$(stat -f%z "$(IPA_PATH)"); \
+	sed -i '' "s/\"size\": [0-9]*/\"size\": $$SIZE/" "$(ALTSOURCE)"; \
+	sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' "$(ALTSOURCE)"; \
 	sed -i '' 's/"versionDate": "[^"]*"/"versionDate": "$(TODAY)"/' "$(ALTSOURCE)"; \
 	sed -i '' 's/"versionDescription": "[^"]*"/"versionDescription": "$(DESCRIPTION)"/' "$(ALTSOURCE)"; \
 	sed -i '' 's|releases/download/v[^/]*/|releases/download/v$(VERSION)/|' "$(ALTSOURCE)"; \

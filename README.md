@@ -124,6 +124,7 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 ---
 
 ## Building
+
 ### Requirements
 - iOS 15.0+
 - Xcode 15+
@@ -133,6 +134,19 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 2. Open `Spoofy.xcodeproj` in Xcode
 3. Set your development team and update the bundle identifier to match your team
 4. Build and run on your device
+
+---
+
+## For Developers
+
+### Releasing a New Version
+1. Update the **Version** in Xcode (Target → General → Version)
+2. Archive and move the `.xcarchive` to `altstore/`
+3. Run:
+   ```
+   make release VERSION=1.1 DESCRIPTION="Bug fixes and improvements"
+   ```
+   This builds the `.ipa`, updates `altsource.json`, commits, pushes, and creates a GitHub Release.
 
 ---
 
