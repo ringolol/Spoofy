@@ -121,8 +121,7 @@ Source: https://raw.githubusercontent.com/ringolol/Spoofy/main/altstore/altsourc
 
 Spoofy is **not available on the App Store** and does not support VPN mode. Both require an Apple Developer Program membership ($99/year), which the developer does not have. Because of this:
 
-- **No App Store distribution** — you need to build the app yourself with Xcode and sideload it onto your device (e.g., using a free Apple ID or [AltStore](https://altstore.io/)). The license permits anyone with a Developer account to publish Spoofy on the App Store.
-- **7-day expiration** — builds signed with a free Apple ID expire after 7 days and need to be re-installed.
+- **No App Store distribution** — you need to build the app yourself with Xcode and sideload it onto your device (e.g., using a free Apple ID or [AltStore](https://altstore.io/)) or use the AltStore source provided. Though the license permits anyone with a Developer account to publish Spoofy on the App Store.
 - **No VPN mode** — iOS Network Extensions (which enable system-wide VPN-based proxying) require entitlements that are only available through the paid Developer Program. Instead, Spoofy works as a local proxy that you connect to via Wi-Fi proxy settings.
 
 ---
