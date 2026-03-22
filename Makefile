@@ -25,10 +25,14 @@ ipa:
 
 release: ipa
 ifndef VERSION
-	$(error VERSION is required. Usage: make release VERSION=1.1)
+	$(error VERSION is required. Usage: make release VERSION=1.1 DESCRIPTION="Bug fixes")
+endif
+ifndef DESCRIPTION
+	$(error DESCRIPTION is required. Usage: make release VERSION=1.1 DESCRIPTION="Bug fixes")
 endif
 	@sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' "$(ALTSOURCE)"; \
 	sed -i '' 's/"versionDate": "[^"]*"/"versionDate": "$(TODAY)"/' "$(ALTSOURCE)"; \
+	sed -i '' 's/"versionDescription": "[^"]*"/"versionDescription": "$(DESCRIPTION)"/' "$(ALTSOURCE)"; \
 	sed -i '' 's|releases/download/v[^/]*/|releases/download/v$(VERSION)/|' "$(ALTSOURCE)"; \
 	echo "Updated altsource.json: version=$(VERSION), date=$(TODAY), downloadURL=v$(VERSION)"; \
 	git add "$(ALTSOURCE)" && git commit -m "Release v$(VERSION)" && git push; \
