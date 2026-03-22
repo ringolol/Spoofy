@@ -191,10 +191,7 @@ A ready-to-use profile for unblocking YouTube:
 ## For Developers
 
 ### Releasing a New Version
-1. Update the **Version** in Xcode (Target → General → Version)
-2. Archive and move the `.xcarchive` to `altstore/`
-3. Run:
-   ```
-   make release VERSION=1.1 DESCRIPTION="Bug fixes and improvements"
-   ```
-   This builds the `.ipa`, updates `altsource.json`, commits, pushes, and creates a GitHub Release.
+```
+make release VERSION=1.2 DESCRIPTION="Bug fixes and improvements"
+```
+Bumps the Xcode project version, archives the app, updates `altsource.json`, and creates a GitHub Release.
