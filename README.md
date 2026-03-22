@@ -36,10 +36,6 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 
 ## Configuration Guide
 
-### Proxy Port
-
-The port on which the local proxy server listens. Default is `8090`.
-
 ### Profiles
 
 Spoofy uses a profile system to apply different bypass strategies to different domains.
@@ -86,6 +82,18 @@ When enabled, DNS queries are sent over HTTPS instead of plain DNS, preventing y
 - **DoH Server URL** — the DoH endpoint to use (default: `https://1.1.1.1/dns-query`)
 
 **Recommendation:** Enable this if your ISP blocks domains at the DNS level.
+
+### Advanced Options
+
+#### Proxy Port
+
+The port on which the local proxy server listens. Default is `8090`.
+
+#### Allow LAN Access
+
+When enabled, the proxy server binds to `0.0.0.0` instead of `127.0.0.1`, allowing other devices on the same local network to connect to the proxy. Disabled by default.
+
+This is useful when you want to route traffic from another device (e.g., a computer or tablet) through Spoofy running on your iPhone. On the other device, set the HTTP proxy to your iPhone's local IP address and the configured port.
 
 ---
 
