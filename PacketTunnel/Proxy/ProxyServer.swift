@@ -28,8 +28,9 @@ final class ProxyServer {
         tcpOptions.noDelay = true
 
         let params = NWParameters(tls: nil, tcp: tcpOptions)
+        let bindAddress: NWEndpoint.Host = settings.allowLANAccess ? .ipv4(.any) : .ipv4(.loopback)
         params.requiredLocalEndpoint = NWEndpoint.hostPort(
-            host: .ipv4(.loopback),
+            host: bindAddress,
             port: NWEndpoint.Port(rawValue: port)!
         )
 
@@ -43,7 +44,8 @@ final class ProxyServer {
         listener?.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                Self.logger.info("Proxy listening on 127.0.0.1:\(self.port)")
+                let addr = self.settings.allowLANAccess ? "0.0.0.0" : "127.0.0.1"
+                Self.logger.info("Proxy listening on \(addr):\(self.port)")
                 completion(nil)
             case .failed(let error):
                 Self.logger.error("Listener failed: \(error.localizedDescription)")

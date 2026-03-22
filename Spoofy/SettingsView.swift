@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @State private var profiles: [SpoofProfile] = []
     @State private var portText: String = "8090"
+    @State private var allowLANAccess: Bool = false
 
     private let settings = AppSettings.shared
 
@@ -58,6 +59,11 @@ struct SettingsView: View {
                             }
                         }
                 }
+
+                Toggle("Allow LAN Access", isOn: $allowLANAccess)
+                    .onChange(of: allowLANAccess) { newValue in
+                        settings.allowLANAccess = newValue
+                    }
             }
         }
         .navigationTitle("Settings")
@@ -78,6 +84,7 @@ struct SettingsView: View {
     private func reload() {
         profiles = settings.profiles
         portText = "\(settings.proxyPort)"
+        allowLANAccess = settings.allowLANAccess
     }
 
     private func profileRow(_ profile: SpoofProfile) -> some View {

@@ -57,6 +57,7 @@ final class AppSettings {
         defaults = .standard
         defaults.register(defaults: [
             "proxyPort": 8090,
+            "allowLANAccess": false,
         ])
     }
 
@@ -82,6 +83,11 @@ final class AppSettings {
     var proxyPort: UInt16 {
         get { UInt16(defaults.integer(forKey: "proxyPort")) }
         set { defaults.set(Int(newValue), forKey: "proxyPort") }
+    }
+
+    var allowLANAccess: Bool {
+        get { defaults.bool(forKey: "allowLANAccess") }
+        set { defaults.set(newValue, forKey: "allowLANAccess") }
     }
 
     func matchingProfile(for host: String) -> SpoofProfile {
