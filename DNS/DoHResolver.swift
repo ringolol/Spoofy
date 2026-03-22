@@ -4,7 +4,7 @@ import os.log
 /// DNS-over-HTTPS resolver. Builds a DNS wire-format query, sends it via GET to a DoH endpoint,
 /// and parses A/AAAA records from the response.
 final class DoHResolver {
-    private static let logger = Logger(subsystem: "com.rnglol.Spoofy.PacketTunnel", category: "DoH")
+    private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "DoH")
 
     private let serverURL: String
     private let session: URLSession

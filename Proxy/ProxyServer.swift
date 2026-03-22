@@ -4,7 +4,7 @@ import os.log
 
 /// Local HTTP proxy server that accepts connections and dispatches to HTTP/HTTPS handlers.
 final class ProxyServer {
-    private static let logger = Logger(subsystem: "com.rnglol.Spoofy.PacketTunnel", category: "ProxyServer")
+    private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "ProxyServer")
     private static let maxConcurrentConnections = 200
 
     private let port: UInt16

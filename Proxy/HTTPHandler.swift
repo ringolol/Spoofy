@@ -4,7 +4,7 @@ import os.log
 
 /// Handles plain HTTP requests: connect to destination, forward the request, relay bidirectionally.
 final class HTTPHandler {
-    private static let logger = Logger(subsystem: "com.rnglol.Spoofy.PacketTunnel", category: "HTTP")
+    private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "HTTP")
 
     private let settings: AppSettings
     private let resolverCache: DoHResolverCache

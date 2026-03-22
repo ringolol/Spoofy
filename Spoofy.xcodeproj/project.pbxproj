@@ -27,25 +27,8 @@
 		FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0002 /* ProxyServer.swift */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		7F84E1512F5F357600EA1BB8 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
 		30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProxyManager.swift; sourceTree = "<group>"; };
-		7F84E1452F5F357600EA1BB8 /* PacketTunnel.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PacketTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		7F84E1472F5F357600EA1BB8 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
-		7F84E14C2F5F357600EA1BB8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		7F84E14D2F5F357600EA1BB8 /* PacketTunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PacketTunnel.entitlements; sourceTree = "<group>"; };
 		7F84E1552F5F370A00EA1BB8 /* Spoofy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Spoofy.entitlements; sourceTree = "<group>"; };
 		7FA87CB52F5F2B4B00819091 /* Spoofy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spoofy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoofyApp.swift; sourceTree = "<group>"; };
@@ -53,7 +36,6 @@
 		7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		7FE364DF2F6BAC66004F5832 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		AA00000200000001AABB0001 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0002 /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0003 /* HTTPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPParser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0004 /* HTTPHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPHandler.swift; sourceTree = "<group>"; };
@@ -65,7 +47,6 @@
 		AA00000200000001AABB000A /* DoHResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoHResolver.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000B /* DNSCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSCache.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
-		AA00000200000001AABB000D /* VPNManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VPNManager.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundAudioPlayer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -81,34 +62,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		7F84E1462F5F357600EA1BB8 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				7F84E1472F5F357600EA1BB8 /* NetworkExtension.framework */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		7F84E1492F5F357600EA1BB8 /* PacketTunnel */ = {
-			isa = PBXGroup;
-			children = (
-				AA00000200000001AABB0001 /* PacketTunnelProvider.swift */,
-				AA00000300000001AABB0001 /* Proxy */,
-				AA00000300000001AABB0002 /* TLS */,
-				AA00000300000001AABB0003 /* DNS */,
-				7F84E14C2F5F357600EA1BB8 /* Info.plist */,
-				7F84E14D2F5F357600EA1BB8 /* PacketTunnel.entitlements */,
-			);
-			path = PacketTunnel;
-			sourceTree = "<group>";
-		};
 		7FA87CAC2F5F2B4B00819091 = {
 			isa = PBXGroup;
 			children = (
 				7FA87CB72F5F2B4B00819091 /* Spoofy */,
-				7F84E1492F5F357600EA1BB8 /* PacketTunnel */,
+				AA00000300000001AABB0001 /* Proxy */,
+				AA00000300000001AABB0002 /* TLS */,
+				AA00000300000001AABB0003 /* DNS */,
 				AA00000300000001AABB0004 /* Shared */,
-				7F84E1462F5F357600EA1BB8 /* Frameworks */,
 				7FA87CB62F5F2B4B00819091 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -117,7 +78,6 @@
 			isa = PBXGroup;
 			children = (
 				7FA87CB52F5F2B4B00819091 /* Spoofy.app */,
-				7F84E1452F5F357600EA1BB8 /* PacketTunnel.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -129,7 +89,6 @@
 				7F84E1552F5F370A00EA1BB8 /* Spoofy.entitlements */,
 				7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */,
 				7FA87CBA2F5F2B4B00819091 /* ContentView.swift */,
-				AA00000200000001AABB000D /* VPNManager.swift */,
 				AA00000200000001AABB000E /* SettingsView.swift */,
 				7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */,
 				7FA87CBE2F5F2B4D00819091 /* Preview Content */,
@@ -196,7 +155,6 @@
 				7FA87CB12F5F2B4B00819091 /* Sources */,
 				7FA87CB22F5F2B4B00819091 /* Frameworks */,
 				7FA87CB32F5F2B4B00819091 /* Resources */,
-				7F84E1512F5F357600EA1BB8 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
