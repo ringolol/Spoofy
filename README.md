@@ -27,18 +27,6 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 - DNS-over-HTTPS (DoH) to prevent DNS-based blocking
 - Per-domain profiles with wildcard pattern matching
 
-
-## Building
-### Requirements
-- iOS 15.0+
-- Xcode 15+
-
-### Steps
-1. Clone the repository
-2. Open `Spoofy.xcodeproj` in Xcode
-3. Set your development team and update the bundle identifier to match your team
-4. Build and run on your device
-
 ---
 
 ## Configuration Guide
@@ -123,6 +111,12 @@ When you stop using Spoofy, remember to disable the proxy:
 
 ---
 
+## AltStore
+
+Source: https://raw.githubusercontent.com/ringolol/Spoofy/main/altstore/altsource.json
+
+---
+
 ## App Store & VPN Mode
 
 Spoofy is **not available on the App Store** and does not support VPN mode. Both require an Apple Developer Program membership ($99/year), which the developer does not have. Because of this:
@@ -130,6 +124,19 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 - **No App Store distribution** — you need to build the app yourself with Xcode and sideload it onto your device (e.g., using a free Apple ID or [AltStore](https://altstore.io/)). The license permits anyone with a Developer account to publish Spoofy on the App Store.
 - **7-day expiration** — builds signed with a free Apple ID expire after 7 days and need to be re-installed.
 - **No VPN mode** — iOS Network Extensions (which enable system-wide VPN-based proxying) require entitlements that are only available through the paid Developer Program. Instead, Spoofy works as a local proxy that you connect to via Wi-Fi proxy settings.
+
+---
+
+## Building
+### Requirements
+- iOS 15.0+
+- Xcode 15+
+
+### Steps
+1. Clone the repository
+2. Open `Spoofy.xcodeproj` in Xcode
+3. Set your development team and update the bundle identifier to match your team
+4. Build and run on your device
 
 ---
 
