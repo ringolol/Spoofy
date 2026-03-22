@@ -29,7 +29,7 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 ## Limitations
 
 - **No system-wide VPN** — Spoofy only works over Wi-Fi and requires [manual proxy configuration](#setting-up-wi-fi-proxy-on-iphone). Cellular traffic is not covered. See [App Store & VPN Mode](#app-store--vpn-mode) for why.
-- **No official App Store release** — you must sideload the app yourself. See [App Store & VPN Mode](#app-store--vpn-mode) for details.
+- **No official App Store release** — you must sideload the app yourself or use the [AltStore source](#altstore). See [App Store & VPN Mode](#app-store--vpn-mode) for details.
 - **Fully vibe-coded** — most of the code has never been reviewed by a human. Testing has been limited to running on a physical device and WireShark packet inspection. Use at your own risk.
 
 ---
@@ -116,7 +116,7 @@ You need to manually configure your iPhone's Wi-Fi proxy settings to route traff
 
 ## AltStore
 
-Source: https://raw.githubusercontent.com/ringolol/Spoofy/main/altstore/altsource.json
+[AltStore](https://altstore.io/) source: https://raw.githubusercontent.com/ringolol/Spoofy/main/altstore/altsource.json
 
 ---
 
@@ -124,7 +124,7 @@ Source: https://raw.githubusercontent.com/ringolol/Spoofy/main/altstore/altsourc
 
 Spoofy is **not available on the App Store** and does not support VPN mode. Both require an Apple Developer Program membership ($99/year), which the developer does not have. Because of this:
 
-- **No App Store distribution** — you need to build the app yourself with Xcode and sideload it onto your device (e.g., using a free Apple ID or [AltStore](https://altstore.io/)) or use the AltStore source provided. Though the license permits anyone with a Developer account to publish Spoofy on the App Store.
+- **No App Store distribution** — you need to build the app yourself with Xcode and sideload it onto your device (e.g., using a free Apple ID or [AltStore](https://altstore.io/)) or use the AltStore source provided. *Though the license permits anyone with a Developer account to publish Spoofy on the App Store.*
 - **No VPN mode** — iOS Network Extensions (which enable system-wide VPN-based proxying) require entitlements that are only available through the paid Developer Program. Instead, Spoofy works as a local proxy that you connect to via Wi-Fi proxy settings.
 
 ---
