@@ -143,19 +143,6 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 
 ---
 
-## For Developers
-
-### Releasing a New Version
-1. Update the **Version** in Xcode (Target → General → Version)
-2. Archive and move the `.xcarchive` to `altstore/`
-3. Run:
-   ```
-   make release VERSION=1.1 DESCRIPTION="Bug fixes and improvements"
-   ```
-   This builds the `.ipa`, updates `altsource.json`, commits, pushes, and creates a GitHub Release.
-
----
-
 ## Example Profile: YouTube
 
 A ready-to-use profile for unblocking YouTube:
@@ -190,3 +177,16 @@ A ready-to-use profile for unblocking YouTube:
 *.yt.be
 *.ytimg.com
 ```
+
+---
+
+## For Developers
+
+### Releasing a New Version
+1. Update the **Version** in Xcode (Target → General → Version)
+2. Archive and move the `.xcarchive` to `altstore/`
+3. Run:
+   ```
+   make release VERSION=1.1 DESCRIPTION="Bug fixes and improvements"
+   ```
+   This builds the `.ipa`, updates `altsource.json`, commits, pushes, and creates a GitHub Release.
