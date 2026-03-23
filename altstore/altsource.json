@@ -15,7 +15,7 @@
       "developerName": "ringolol",
       "version": "1.4",
       "versionDate": "2026-03-23",
-      "versionDescription": "Import "versionDescription": "Import " Export Settings"versionDescription": "allow lan access option" Export Settings",
+      "versionDescription": "Import and Export Settings"versionDescription": "Import " Export Settings"versionDescription": "allow lan access option" Export Settings",
       "downloadURL": "https://github.com/ringolol/Spoofy/releases/download/v1.4/Spoofy.ipa",
       "localizedDescription": "A native iOS DPI bypass tool. Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI and blocking your traffic.",
       "iconURL": "https://raw.githubusercontent.com/ringolol/Spoofy/main/icon.png",
