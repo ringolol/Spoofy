@@ -4,6 +4,10 @@ struct SettingsView: View {
     @State private var profiles: [SpoofProfile] = []
     @State private var portText: String = "8090"
     @State private var allowLANAccess: Bool = false
+    @State private var showExportedAlert = false
+    @State private var showImportConfirm = false
+    @State private var showImportError = false
+    @State private var pendingImportJSON: String?
 
     private let settings = AppSettings.shared
 
@@ -43,6 +47,28 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Export / Import") {
+                Button {
+                    if let json = settings.exportJSON() {
+                        UIPasteboard.general.string = json
+                        showExportedAlert = true
+                    }
+                } label: {
+                    Label("Export Settings", systemImage: "doc.on.clipboard")
+                }
+
+                Button {
+                    guard let json = UIPasteboard.general.string else {
+                        showImportError = true
+                        return
+                    }
+                    pendingImportJSON = json
+                    showImportConfirm = true
+                } label: {
+                    Label("Import Settings", systemImage: "clipboard")
+                }
+            }
+
             Section("Advanced") {
                 HStack {
                     Text("Proxy Port")
@@ -71,6 +97,32 @@ struct SettingsView: View {
             EditButton()
         }
         .onAppear { reload() }
+        .alert("Settings Exported", isPresented: $showExportedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Settings have been copied to clipboard.")
+        }
+        .alert("Import Settings?", isPresented: $showImportConfirm) {
+            Button("Cancel", role: .cancel) { pendingImportJSON = nil }
+            Button("Import", role: .destructive) {
+                if let json = pendingImportJSON {
+                    do {
+                        try settings.importJSON(json)
+                        reload()
+                    } catch {
+                        showImportError = true
+                    }
+                }
+                pendingImportJSON = nil
+            }
+        } message: {
+            Text("This will replace all current settings with the imported ones.")
+        }
+        .alert("Import Failed", isPresented: $showImportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Clipboard does not contain valid settings data.")
+        }
     }
 
     private var customProfiles: [SpoofProfile] {

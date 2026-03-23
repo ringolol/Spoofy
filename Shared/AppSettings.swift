@@ -48,6 +48,12 @@ struct SpoofProfile: Codable, Identifiable, Equatable {
     }
 }
 
+struct ExportedSettings: Codable {
+    var profiles: [SpoofProfile]
+    var proxyPort: UInt16
+    var allowLANAccess: Bool
+}
+
 final class AppSettings {
     static let shared = AppSettings()
 
@@ -102,6 +108,28 @@ final class AppSettings {
         }
         // Fallback: return default profile (should always be present)
         return profiles.last ?? SpoofProfile.makeDefault()
+    }
+
+    func exportJSON() -> String? {
+        let exported = ExportedSettings(
+            profiles: profiles,
+            proxyPort: proxyPort,
+            allowLANAccess: allowLANAccess
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(exported) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func importJSON(_ json: String) throws {
+        guard let data = json.data(using: .utf8) else {
+            throw NSError(domain: "AppSettings", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid text encoding"])
+        }
+        let imported = try JSONDecoder().decode(ExportedSettings.self, from: data)
+        profiles = imported.profiles
+        proxyPort = imported.proxyPort
+        allowLANAccess = imported.allowLANAccess
     }
 
     static func matchesPatterns(host: String, patterns: [String]) -> Bool {
