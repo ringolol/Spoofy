@@ -10,7 +10,7 @@
   ],
   "apps": [
     {
-      "name": "Spoofy",
+      "name": "Spoofy Alpha",
       "bundleIdentifier": "com.rnglol.Spoofy",
       "developerName": "ringolol",
       "version": "1.5",
