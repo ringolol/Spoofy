@@ -96,6 +96,11 @@ final class ProxyServer {
         clientConn.start(queue: proxyQueue)
     }
 
+    private func closeConnection(_ clientConn: NWConnection) {
+        clientConn.cancel()
+        activeConnections.decrement()
+    }
+
     private func readRequest(from clientConn: NWConnection) {
         // Read enough for an HTTP request line + headers
         clientConn.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] content, _, _, error in
@@ -103,12 +108,12 @@ final class ProxyServer {
 
             if let error = error {
                 Self.logger.debug("Read error: \(error.localizedDescription)")
-                clientConn.cancel()
+                self.closeConnection(clientConn)
                 return
             }
 
             guard let data = content, !data.isEmpty else {
-                clientConn.cancel()
+                self.closeConnection(clientConn)
                 return
             }
 
@@ -116,7 +121,7 @@ final class ProxyServer {
                 Self.logger.debug("Failed to parse HTTP request")
                 let badRequest = "HTTP/1.1 400 Bad Request\r\n\r\n"
                 clientConn.send(content: badRequest.data(using: .utf8), completion: .contentProcessed { _ in
-                    clientConn.cancel()
+                    self.closeConnection(clientConn)
                 })
                 return
             }
@@ -125,7 +130,7 @@ final class ProxyServer {
                 Self.logger.debug("Invalid method: \(request.method)")
                 let notImpl = "HTTP/1.1 501 Not Implemented\r\n\r\n"
                 clientConn.send(content: notImpl.data(using: .utf8), completion: .contentProcessed { _ in
-                    clientConn.cancel()
+                    self.closeConnection(clientConn)
                 })
                 return
             }
@@ -136,16 +141,14 @@ final class ProxyServer {
                     host: request.host,
                     port: request.port
                 ) {
-                    clientConn.cancel()
-                    self.activeConnections.decrement()
+                    self.closeConnection(clientConn)
                 }
             } else {
                 self.httpHandler.handleRequest(
                     clientConn: clientConn,
                     request: request
                 ) {
-                    clientConn.cancel()
-                    self.activeConnections.decrement()
+                    self.closeConnection(clientConn)
                 }
             }
         }
