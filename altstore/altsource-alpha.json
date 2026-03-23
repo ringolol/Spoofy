@@ -1,0 +1,31 @@
+{
+  "name": "Spoofy Alpha Version",
+  "subtitle": "A native iOS DPI bypass tool inspired by SpoofDPI",
+  "description": "this is an alpha version of Spoofy, it's recommended to use the stable version: https://raw.githubusercontent.com/ringolol/Spoofy/main/altstore/altsource.json",
+  "iconURL": "https://raw.githubusercontent.com/ringolol/Spoofy/main/icon.png",
+  "website": "https://github.com/ringolol/Spoofy",
+  "tintColor": "#F54F32",
+  "featuredApps": [
+    "com.rnglol.Spoofy"
+  ],
+  "apps": [
+    {
+      "name": "Spoofy",
+      "bundleIdentifier": "com.rnglol.Spoofy",
+      "developerName": "ringolol",
+      "version": "1.5",
+      "versionDate": "2026-03-23",
+      "versionDescription": "first alpha version",
+      "downloadURL": "https://github.com/ringolol/Spoofy/releases/download/a1.5/Spoofy.ipa",
+      "localizedDescription": "A native iOS DPI bypass tool. Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI and blocking your traffic.",
+      "iconURL": "https://raw.githubusercontent.com/ringolol/Spoofy/main/icon.png",
+      "size": 135761,
+      "screenshotURLs": [
+        "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/main_screen.PNG",
+        "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/settings_screen.PNG",
+        "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/profile_screen.PNG"
+      ]
+    }
+  ],
+  "news": []
+}
