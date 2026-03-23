@@ -7,9 +7,10 @@ IPA_PATH = $(ARCHIVE_DIR)/$(IPA_NAME)
 EXPORT_DIR = $(ARCHIVE_DIR)/export
 
 ALTSOURCE = $(ARCHIVE_DIR)/altsource.json
+ALTSOURCE_ALPHA = $(ARCHIVE_DIR)/altsource-alpha.json
 TODAY = $(shell date +%Y-%m-%d)
 
-.PHONY: build release clean
+.PHONY: build release release-alpha _do-release clean
 
 build:
 	@echo "Archiving $(SCHEME)..."
@@ -31,6 +32,12 @@ build:
 	@echo "Created $(IPA_PATH)"
 
 release:
+	@$(MAKE) _do-release TAG_PREFIX=v RELEASE_ALTSOURCE="$(ALTSOURCE)"
+
+release-alpha:
+	@$(MAKE) _do-release TAG_PREFIX=a RELEASE_ALTSOURCE="$(ALTSOURCE_ALPHA)"
+
+_do-release:
 ifndef VERSION
 	$(error VERSION is required. Usage: make release VERSION=1.2 DESCRIPTION="Bug fixes")
 endif
@@ -41,16 +48,18 @@ endif
 	@sed -i '' 's/MARKETING_VERSION = [^;]*/MARKETING_VERSION = $(VERSION)/' "$(PROJECT)/project.pbxproj"
 	@$(MAKE) build
 	@SIZE=$$(stat -f%z "$(IPA_PATH)"); \
-	sed -i '' "s/\"size\": [0-9]*/\"size\": $$SIZE/" "$(ALTSOURCE)"; \
-	sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' "$(ALTSOURCE)"; \
-	sed -i '' 's/"versionDate": "[^"]*"/"versionDate": "$(TODAY)"/' "$(ALTSOURCE)"; \
-	sed -i '' 's/"versionDescription": "[^"]*"/"versionDescription": "$(DESCRIPTION)"/' "$(ALTSOURCE)"; \
-	sed -i '' 's|releases/download/v[^/]*/|releases/download/v$(VERSION)/|' "$(ALTSOURCE)"; \
-	echo "Updated altsource.json: version=$(VERSION), date=$(TODAY), downloadURL=v$(VERSION)"
-	@git add "$(ALTSOURCE)" "$(PROJECT)/project.pbxproj" && \
-	git commit -m "Release v$(VERSION)" && git push
-	@gh release create "v$(VERSION)" "$(IPA_PATH)" --title "v$(VERSION)" --generate-notes
-	@echo "Released v$(VERSION) on GitHub"
+	jq --arg ver "$(VERSION)" \
+	   --arg date "$(TODAY)" \
+	   --arg desc "$(DESCRIPTION)" \
+	   --arg prefix "$(TAG_PREFIX)" \
+	   --argjson size $$SIZE \
+	   '.apps[0].version = $$ver | .apps[0].versionDate = $$date | .apps[0].versionDescription = $$desc | .apps[0].size = $$size | .apps[0].downloadURL = "https://github.com/ringolol/Spoofy/releases/download/\($$prefix)\($$ver)/Spoofy.ipa"' \
+	   "$(RELEASE_ALTSOURCE)" > "$(RELEASE_ALTSOURCE).tmp" && mv "$(RELEASE_ALTSOURCE).tmp" "$(RELEASE_ALTSOURCE)"; \
+	echo "Updated $(RELEASE_ALTSOURCE): version=$(VERSION), date=$(TODAY), downloadURL=$(TAG_PREFIX)$(VERSION)"
+	@git add "$(RELEASE_ALTSOURCE)" "$(PROJECT)/project.pbxproj" && \
+	git commit -m "Release $(TAG_PREFIX)$(VERSION)" && git push
+	@gh release create "$(TAG_PREFIX)$(VERSION)" "$(IPA_PATH)" --title "$(TAG_PREFIX)$(VERSION)" --generate-notes
+	@echo "Released $(TAG_PREFIX)$(VERSION) on GitHub"
 
 clean:
 	@rm -rf "$(ARCHIVE_PATH)" "$(EXPORT_DIR)" Payload
