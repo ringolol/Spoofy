@@ -18,7 +18,7 @@
       "versionDescription": "inherit default values for DoH and VPN from master profile",
       "downloadURL": "https://github.com/ringolol/Spoofy/releases/download/a1.5.3/Spoofy.ipa",
       "localizedDescription": "A native iOS DPI bypass tool. Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI and blocking your traffic.",
-      "iconURL": "https://raw.githubusercontent.com/ringolol/Spoofy/main/icon.png",
+      "iconURL": "https://raw.githubusercontent.com/ringolol/Spoofy/main/icon_macos.png",
       "size": 336446,
       "screenshotURLs": [
         "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/main_screen.PNG",
