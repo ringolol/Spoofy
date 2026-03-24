@@ -22,6 +22,9 @@
 		AA00000100000001AABB000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000E /* SettingsView.swift */; };
 		AA00000100000001AABB000F /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000C /* AppSettings.swift */; };
 		AA00000100000001AABB0010 /* BackgroundAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */; };
+		AA00000100000001AABB0011 /* ShadowsocksCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0011 /* ShadowsocksCrypto.swift */; };
+		AA00000100000001AABB0012 /* ShadowsocksStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0012 /* ShadowsocksStream.swift */; };
+		AA00000100000001AABB0013 /* OutlineAccessKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0013 /* OutlineAccessKey.swift */; };
 		BE8C26D69618E16F5A2EBA03 /* TLSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0007 /* TLSParser.swift */; };
 		CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0004 /* HTTPHandler.swift */; };
 		FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0002 /* ProxyServer.swift */; };
@@ -49,6 +52,9 @@
 		AA00000200000001AABB000C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundAudioPlayer.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0011 /* ShadowsocksCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowsocksCrypto.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0012 /* ShadowsocksStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowsocksStream.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0013 /* OutlineAccessKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineAccessKey.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +75,7 @@
 				AA00000300000001AABB0001 /* Proxy */,
 				AA00000300000001AABB0002 /* TLS */,
 				AA00000300000001AABB0003 /* DNS */,
+				AA00000300000001AABB0005 /* Shadowsocks */,
 				AA00000300000001AABB0004 /* Shared */,
 				7FA87CB62F5F2B4B00819091 /* Products */,
 			);
@@ -143,6 +150,16 @@
 				AA00000200000001AABB000C /* AppSettings.swift */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		AA00000300000001AABB0005 /* Shadowsocks */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000001AABB0011 /* ShadowsocksCrypto.swift */,
+				AA00000200000001AABB0012 /* ShadowsocksStream.swift */,
+				AA00000200000001AABB0013 /* OutlineAccessKey.swift */,
+			);
+			path = Shadowsocks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -230,6 +247,9 @@
 				6C8525E6C3C24B6F0EBDEFD3 /* PatternMask.swift in Sources */,
 				60DABCCCD7228765947F380D /* DoHResolver.swift in Sources */,
 				09FFCA969FA6759926E5ADD6 /* DNSCache.swift in Sources */,
+				AA00000100000001AABB0011 /* ShadowsocksCrypto.swift in Sources */,
+				AA00000100000001AABB0012 /* ShadowsocksStream.swift in Sources */,
+				AA00000100000001AABB0013 /* OutlineAccessKey.swift in Sources */,
 				AA00000100000001AABB0010 /* BackgroundAudioPlayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

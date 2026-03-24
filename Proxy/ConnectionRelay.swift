@@ -2,7 +2,19 @@ import Foundation
 import Network
 import os.log
 
-/// Bidirectional relay between two NWConnections.
+/// Abstraction over NWConnection so that ConnectionRelay can pipe between
+/// raw TCP connections and encrypted streams (e.g. ShadowsocksStream).
+protocol ConnectionProtocol: AnyObject {
+    func send(content: Data?, contentContext: NWConnection.ContentContext,
+              isComplete: Bool, completion: NWConnection.SendCompletion)
+    func receive(minimumIncompleteLength: Int, maximumLength: Int,
+                 completion: @escaping @Sendable (Data?, NWConnection.ContentContext?, Bool, NWError?) -> Void)
+    func cancel()
+}
+
+extension NWConnection: ConnectionProtocol {}
+
+/// Bidirectional relay between two connections.
 /// Reads from source and writes to destination in a loop until either side closes or errors.
 final class ConnectionRelay {
     private static let bufferSize = 32768 // 32KB (matches Go's io.CopyBuffer)
@@ -13,8 +25,8 @@ final class ConnectionRelay {
     /// Start bidirectional relay between two connections.
     /// Calls completion when both directions finish or idle timeout is reached.
     static func relay(
-        left: NWConnection,
-        right: NWConnection,
+        left: any ConnectionProtocol,
+        right: any ConnectionProtocol,
         label: String = "",
         queue: DispatchQueue,
         completion: @escaping () -> Void
@@ -70,15 +82,15 @@ final class ConnectionRelay {
 
     /// One-directional pipe: read from `source`, write to `dest`.
     private static func pipe(
-        from source: NWConnection,
-        to dest: NWConnection,
+        from source: any ConnectionProtocol,
+        to dest: any ConnectionProtocol,
         label: String,
         activity: LastActivity,
         completion: @escaping () -> Void
     ) {
         source.receive(minimumIncompleteLength: 1, maximumLength: bufferSize) { content, _, isComplete, error in
             if let error = error {
-                logger.debug("\(label) read error: \(error.localizedDescription) srcState=\(String(describing: source.state)) dstState=\(String(describing: dest.state))")
+                logger.debug("\(label) read error: \(error.localizedDescription)")
         
                 dest.cancel()
                 completion()
@@ -101,7 +113,7 @@ final class ConnectionRelay {
                     pipe(from: source, to: dest, label: label, activity: activity, completion: completion)
                 })
             } else if isComplete {
-                logger.debug("\(label) complete (isComplete=true, data=nil/empty) srcState=\(String(describing: source.state))")
+                logger.debug("\(label) complete (isComplete=true, data=nil/empty)")
         
                 dest.cancel()
                 completion()

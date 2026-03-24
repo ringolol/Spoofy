@@ -40,6 +40,25 @@ final class HTTPSHandler {
 
             Self.logger.info("[\(host)] Sent 200 OK, clientState=\(String(describing: clientConn.state))")
 
+            // VPN mode: route through Outline/Shadowsocks server
+            if profile.routeMode == .vpn, let outlineConfig = profile.outlineConfig {
+                Self.logger.info("[\(host)] VPN mode, connecting via Outline...")
+                ShadowsocksStream.connect(config: outlineConfig, targetHost: host, targetPort: port, queue: self.queue) { stream in
+                    guard let stream = stream else {
+                        Self.logger.error("[\(host)] Failed to connect to Outline server")
+                        clientConn.cancel()
+                        completion()
+                        return
+                    }
+                    Self.logger.info("[\(host)] Outline connected, starting relay")
+                    ConnectionRelay.relay(left: clientConn, right: stream, label: host, queue: self.queue) {
+                        stream.cancel()
+                        completion()
+                    }
+                }
+                return
+            }
+
             // If no fragmentation, skip TLS parsing and just do a blind relay
             if profile.splitMode == .none {
                 Self.logger.info("[\(host)] Mode=none, connecting to server...")

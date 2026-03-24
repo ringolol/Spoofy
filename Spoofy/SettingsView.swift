@@ -33,7 +33,7 @@ struct SettingsView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(def.splitMode.displayName)
+                            Text(def.routeMode == .vpn ? def.vpnType.displayName : def.splitMode.displayName)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -161,7 +161,7 @@ struct SettingsView: View {
 
                 Spacer()
 
-                Text(profile.splitMode.displayName)
+                Text(profile.routeMode == .vpn ? profile.vpnType.displayName : profile.splitMode.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .opacity(profile.isEnabled ? 1 : 0.5)
@@ -187,6 +187,9 @@ struct SettingsView: View {
             name: "",
             isEnabled: true,
             domainPatterns: [],
+            routeMode: .split,
+            vpnType: .outline,
+            outlineConfig: nil,
             splitMode: .none,
             chunkSize: 5,
             tlsRecordFragmentation: false,
@@ -226,6 +229,8 @@ struct ProfileEditView: View {
 
     @State private var profile: SpoofProfile = SpoofProfile.makeDefault()
     @State private var domainText: String = ""
+    @State private var accessKeyText: String = ""
+    @State private var accessKeyError: String?
 
     private let settings = AppSettings.shared
 
@@ -237,27 +242,83 @@ struct ProfileEditView: View {
                 }
             }
 
-            Section("TLS Fragmentation") {
-                Picker("Split Mode", selection: $profile.splitMode) {
-                    ForEach(SplitMode.allCases) { mode in
+            Section("Route Mode") {
+                Picker("Mode", selection: $profile.routeMode) {
+                    ForEach(RouteMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
-
-                if profile.splitMode == .chunk {
-                    Stepper("Chunk Size: \(profile.chunkSize)", value: $profile.chunkSize, in: 1...1000)
-                }
-
-                Toggle("TLS Record Fragmentation", isOn: $profile.tlsRecordFragmentation)
+                .pickerStyle(.segmented)
             }
 
-            Section("DNS over HTTPS") {
-                Toggle("Enable DoH", isOn: $profile.dohEnabled)
+            if profile.routeMode == .vpn {
+                Section {
+                    Picker("VPN Type", selection: $profile.vpnType) {
+                        ForEach(VPNType.allCases) { type in
+                            Text(type.displayName).tag(type)
+                        }
+                    }
+                } header: {
+                    Text("VPN")
+                }
 
-                if profile.dohEnabled {
-                    TextField("DoH Server URL", text: $profile.dohServerURL)
+                Section {
+                    TextField("ss:// access key", text: $accessKeyText, axis: .vertical)
+                        .font(.system(.body, design: .monospaced))
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .lineLimit(3)
+                        .onChange(of: accessKeyText) { newValue in
+                            parseAccessKey(newValue)
+                        }
+
+                    if let error = accessKeyError {
+                        Text(error)
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
+
+                    if let config = profile.outlineConfig {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("\(config.host):\(config.port)", systemImage: "server.rack")
+                            Label(config.cipher.displayName, systemImage: "lock.shield")
+                            if config.prefix != nil {
+                                Label("Prefix enabled", systemImage: "eye.slash")
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    }
+                } header: {
+                    Text("Outline Server")
+                } footer: {
+                    Text("Paste your Outline access key (ss:// URI)")
+                }
+            }
+
+            if profile.routeMode == .split {
+                Section("TLS Fragmentation") {
+                    Picker("Split Mode", selection: $profile.splitMode) {
+                        ForEach(SplitMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+
+                    if profile.splitMode == .chunk {
+                        Stepper("Chunk Size: \(profile.chunkSize)", value: $profile.chunkSize, in: 1...1000)
+                    }
+
+                    Toggle("TLS Record Fragmentation", isOn: $profile.tlsRecordFragmentation)
+                }
+
+                Section("DNS over HTTPS") {
+                    Toggle("Enable DoH", isOn: $profile.dohEnabled)
+
+                    if profile.dohEnabled {
+                        TextField("DoH Server URL", text: $profile.dohServerURL)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
                 }
             }
 
@@ -296,6 +357,21 @@ struct ProfileEditView: View {
         if let idx = all.firstIndex(where: { $0.id == profileID }) {
             all[idx] = profile
             settings.profiles = all
+        }
+    }
+
+    private func parseAccessKey(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            profile.outlineConfig = nil
+            accessKeyError = nil
+            return
+        }
+        if let config = OutlineAccessKey.parse(trimmed) {
+            profile.outlineConfig = config
+            accessKeyError = nil
+        } else {
+            accessKeyError = "Invalid access key"
         }
     }
 }

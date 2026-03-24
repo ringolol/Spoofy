@@ -1,0 +1,5 @@
+keys:
+  - id: user01
+    port: 8081
+    cipher: chacha20-ietf-poly1305
+    secret: Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTppS0ZKNXJuTEM5N2tHUVkzVngxRDJM

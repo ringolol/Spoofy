@@ -28,6 +28,35 @@ final class HTTPHandler {
 
         Self.logger.info("HTTP \(request.method) -> \(host):\(port)")
 
+        // VPN mode: route through Outline/Shadowsocks server
+        if profile.routeMode == .vpn, let outlineConfig = profile.outlineConfig {
+            Self.logger.info("[\(host)] VPN mode, connecting via Outline...")
+            ShadowsocksStream.connect(config: outlineConfig, targetHost: host, targetPort: port, queue: queue) { stream in
+                guard let stream = stream else {
+                    Self.logger.error("[\(host)] Failed to connect to Outline server")
+                    clientConn.cancel()
+                    completion()
+                    return
+                }
+
+                // Forward the raw HTTP request through the Shadowsocks stream
+                stream.send(content: request.rawData, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { error in
+                    if let error = error {
+                        Self.logger.error("[\(host)] Failed to send request via Outline: \(error.localizedDescription)")
+                        stream.cancel()
+                        clientConn.cancel()
+                        completion()
+                        return
+                    }
+                    ConnectionRelay.relay(left: clientConn, right: stream, label: host, queue: self.queue) {
+                        stream.cancel()
+                        completion()
+                    }
+                })
+            }
+            return
+        }
+
         resolveAndConnect(host: host, port: port, dohResolver: dohResolver) { serverConn in
             guard let serverConn = serverConn else {
                 Self.logger.error("Failed to connect to \(host):\(port)")

@@ -1,0 +1,32 @@
+services:
+  shadowbox:
+    image: diffusehyperion/outline-vpn
+    container_name: shadowbox
+    restart: unless-stopped
+    volumes:
+      - shadowbox-state:/shadowbox/state
+    environment:
+      - SB_STATE_DIR=/shadowbox/state
+      - SB_API_PREFIX=api
+      - SB_CERTIFICATE_FILE=/shadowbox/state/shadowbox-selfsigned.crt
+      - SB_PRIVATE_KEY_FILE=/shadowbox/state/shadowbox-selfsigned.key
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    ports:
+      - 8082:8082
+      - 8082:8082/udp
+      # - 8081:8081 Port for access key management API. Not necessary for running
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+networks:
+  default:
+    name: outline-vpn
+
+volumes:
+  shadowbox-state:
+    name: shadowbox-state

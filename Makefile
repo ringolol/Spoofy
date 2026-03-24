@@ -57,7 +57,7 @@ endif
 	   "$(RELEASE_ALTSOURCE)" > "$(RELEASE_ALTSOURCE).tmp" && mv "$(RELEASE_ALTSOURCE).tmp" "$(RELEASE_ALTSOURCE)"; \
 	echo "Updated $(RELEASE_ALTSOURCE): version=$(VERSION), date=$(TODAY), downloadURL=$(TAG_PREFIX)$(VERSION)"
 	@git add "$(RELEASE_ALTSOURCE)" "$(PROJECT)/project.pbxproj" && \
-	git commit -m "Release $(TAG_PREFIX)$(VERSION)" && git push
+	git commit --allow-empty -m "Release $(TAG_PREFIX)$(VERSION)" && git push
 	@gh release create "$(TAG_PREFIX)$(VERSION)" "$(IPA_PATH)" --title "$(TAG_PREFIX)$(VERSION)" --generate-notes
 	@echo "Released $(TAG_PREFIX)$(VERSION) on GitHub"
 
