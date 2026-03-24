@@ -10,6 +10,7 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
   <img src="Docs/main_screen.PNG" width="250" />
   <img src="Docs/settings_screen.PNG" width="250" />
   <img src="Docs/profile_screen.PNG" width="250" />
+  <img src="Docs/profile_vpn_screen.jpg" width="250" />
 </p>
 
 ## How It Works
@@ -21,10 +22,12 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 
 ## Features
 
-- Multiple TLS fragmentation strategies (SNI, Chunk, Random, FirstByte)
-- TLS record fragmentation for additional obfuscation
-- DNS-over-HTTPS (DoH) to prevent DNS-based blocking
-- Per-domain profiles with wildcard pattern matching
+- TCP and TLS fragmentations to prevent DPI blocking
+- DNS-over-HTTPS to prevent DNS-based blocking
+- Outline server support — route matched domains through an Outline server
+- Per Domain Profiles. Allows to precisely configure which rules work for which domain
+- Export / Import settings
+- LAN Server. Allows other devices on the same local network to connect to the proxy.
 
 ## Limitations
 
@@ -40,6 +43,8 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 
 Spoofy uses a profile system to apply different bypass strategies to different domains.
 
+<img src="Docs/settings_screen.PNG" width="250" />
+
 #### Master Profile
 
 The **Master** (default) profile applies to all traffic that doesn't match any other profile.
@@ -48,12 +53,23 @@ The **Master** (default) profile applies to all traffic that doesn't match any o
 
 You can create additional profiles for specific domains that need different settings.
 
-Domain patterns support wildcards:
+### Domain patterns
+
+Support wildcards:
 | Pattern | Matches |
 |---|---|
 | `*.example.com` | `www.example.com`, `api.example.com`, etc. |
 | `example.*` | `example.com`, `example.org`, etc. |
 | `*.youtube.*` | `www.youtube.com`, `m.youtube.co.uk`, etc. |
+
+### Route Mode
+
+Each profile has a **Route Mode** that determines how matched traffic is handled:
+
+| Mode | Description |
+|---|---|
+| **Split** | DPI bypass — fragments TLS ClientHello using the configured split strategy (default) |
+| **VPN** | Routes traffic through a VPN. For now only [Outline (Shadowsocks) server](#outline-server) is supported |
 
 ### Split Mode
 
@@ -74,6 +90,14 @@ The core setting that determines how the TLS ClientHello packet is fragmented. A
 An additional layer of obfuscation. When enabled, the TLS handshake message is wrapped across multiple TLS records *before* the split mode is applied. This can help bypass DPI that reassembles TLS records before inspecting them.
 
 **Recommendation:** Enable this if your chosen split mode alone doesn't work.
+
+### Outline Server
+
+When VPN type is set to **Outline**, traffic matching that profile's domains is routed through an [Outline](https://getoutline.org/)-compatible Shadowsocks server.
+
+To configure Outline routing paste your Outline server's `ss://` access key into the **Server Configuration** field
+
+**Recommendation:** Use Outline mode when you have access to an Outline server for domains where DPI bypass is not enough.
 
 ### DNS-over-HTTPS (DoH)
 
@@ -151,47 +175,18 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 
 ---
 
-## Example Profile: YouTube
-
-A ready-to-use profile for unblocking YouTube:
-
-| Setting | Value |
-|---|---|
-| **Split Mode** | Chunk |
-| **Chunk Size** | 5 |
-| **TLS Record Fragmentation** | On |
-| **Enable DoH** | Yes |
-| **DoH Server URL** | `https://dns.comss.one/dns-query` |
-
-**Domains** (one per line):
-```
-*.youtube.*
-*.ggpht.*
-*.googlevideo.com
-*.wide-youtube.l.google.com
-*.withyoutube.com
-*.youtu.be
-*.youtube-nocookie.com
-*.youtube-ui.l.google.com
-*.youtube.googleapis.com
-*.youtubeeducation.com
-*.youtubeembeddedplayer.googleapis.com
-*.youtubefanfest.com
-*.youtubegaming.com
-*.youtubego.*
-*.youtubei.googleapis.com
-*.youtubekids.com
-*.youtubemobilesupport.com
-*.yt.be
-*.ytimg.com
-```
-
----
-
 ## For Developers
 
 ### Releasing a New Version
+
 ```
 make release VERSION=1.2 DESCRIPTION="Bug fixes and improvements"
 ```
 Bumps the Xcode project version, archives the app, updates `altsource.json`, and creates a GitHub Release.
+
+### Build and install to the Applications the macOS version
+
+```
+make install-macos
+```
+It tries to build and sign the app and then copy it to the Applications
