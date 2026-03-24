@@ -93,6 +93,10 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
     var dohServerURL: String
     var isDefault: Bool
 
+    // Inheritance from Master profile (only meaningful for non-default profiles)
+    var inheritDoH: Bool
+    var inheritOutlineConfig: Bool
+
     static func makeDefault() -> SpoofProfile {
         SpoofProfile(
             id: UUID(),
@@ -107,7 +111,9 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
             tlsRecordFragmentation: false,
             dohEnabled: false,
             dohServerURL: "https://1.1.1.1/dns-query",
-            isDefault: true
+            isDefault: true,
+            inheritDoH: false,
+            inheritOutlineConfig: false
         )
     }
 
@@ -127,6 +133,8 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
         dohEnabled = try container.decode(Bool.self, forKey: .dohEnabled)
         dohServerURL = try container.decode(String.self, forKey: .dohServerURL)
         isDefault = try container.decode(Bool.self, forKey: .isDefault)
+        inheritDoH = try container.decodeIfPresent(Bool.self, forKey: .inheritDoH) ?? false
+        inheritOutlineConfig = try container.decodeIfPresent(Bool.self, forKey: .inheritOutlineConfig) ?? false
     }
 
     // Memberwise init
@@ -134,7 +142,8 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
         id: UUID, name: String, isEnabled: Bool, domainPatterns: [String],
         routeMode: RouteMode, vpnType: VPNType, outlineConfig: OutlineServerConfig?,
         splitMode: SplitMode, chunkSize: Int, tlsRecordFragmentation: Bool,
-        dohEnabled: Bool, dohServerURL: String, isDefault: Bool
+        dohEnabled: Bool, dohServerURL: String, isDefault: Bool,
+        inheritDoH: Bool = false, inheritOutlineConfig: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -149,6 +158,8 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
         self.dohEnabled = dohEnabled
         self.dohServerURL = dohServerURL
         self.isDefault = isDefault
+        self.inheritDoH = inheritDoH
+        self.inheritOutlineConfig = inheritOutlineConfig
     }
 }
 
@@ -200,14 +211,31 @@ final class AppSettings {
         set { defaults.set(newValue, forKey: "allowLANAccess") }
     }
 
+    var masterProfile: SpoofProfile {
+        profiles.first { $0.isDefault } ?? SpoofProfile.makeDefault()
+    }
+
+    func resolvedProfile(_ profile: SpoofProfile) -> SpoofProfile {
+        guard !profile.isDefault else { return profile }
+        var resolved = profile
+        let master = masterProfile
+        if profile.inheritDoH {
+            resolved.dohServerURL = master.dohServerURL
+        }
+        if profile.inheritOutlineConfig {
+            resolved.outlineConfig = master.outlineConfig
+        }
+        return resolved
+    }
+
     func matchingProfile(for host: String) -> SpoofProfile {
         let h = host.lowercased()
         for profile in profiles where profile.isEnabled {
             if profile.domainPatterns.isEmpty {
-                return profile
+                return resolvedProfile(profile)
             }
             if Self.matchesPatterns(host: h, patterns: profile.domainPatterns) {
-                return profile
+                return resolvedProfile(profile)
             }
         }
         // Fallback: return default profile (should always be present)

@@ -195,7 +195,9 @@ struct SettingsView: View {
             tlsRecordFragmentation: false,
             dohEnabled: false,
             dohServerURL: "https://1.1.1.1/dns-query",
-            isDefault: false
+            isDefault: false,
+            inheritDoH: true,
+            inheritOutlineConfig: true
         )
         let defaultIndex = profiles.firstIndex { $0.isDefault } ?? profiles.endIndex
         profiles.insert(newProfile, at: defaultIndex)
@@ -234,6 +236,10 @@ struct ProfileEditView: View {
 
     private let settings = AppSettings.shared
 
+    private var masterProfile: SpoofProfile? {
+        settings.profiles.first { $0.isDefault }
+    }
+
     var body: some View {
         Form {
             if !profile.isDefault {
@@ -263,36 +269,62 @@ struct ProfileEditView: View {
                 }
 
                 Section {
-                    TextField("ss:// access key", text: $accessKeyText, axis: .vertical)
-                        .font(.system(.body, design: .monospaced))
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .lineLimit(3)
-                        .onChange(of: accessKeyText) { newValue in
-                            parseAccessKey(newValue)
-                        }
-
-                    if let error = accessKeyError {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(.caption)
+                    if !profile.isDefault {
+                        Toggle("Use Master Server", isOn: $profile.inheritOutlineConfig)
                     }
 
-                    if let config = profile.outlineConfig {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Label("\(config.host):\(config.port)", systemImage: "server.rack")
-                            Label(config.cipher.displayName, systemImage: "lock.shield")
-                            if config.prefix != nil {
-                                Label("Prefix enabled", systemImage: "eye.slash")
+                    if profile.inheritOutlineConfig && !profile.isDefault {
+                        if let config = masterProfile?.outlineConfig {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label("\(config.host):\(config.port)", systemImage: "server.rack")
+                                Label(config.cipher.displayName, systemImage: "lock.shield")
+                                if config.prefix != nil {
+                                    Label("Prefix enabled", systemImage: "eye.slash")
+                                }
                             }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        } else {
+                            Text("Master has no Outline server configured")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    } else {
+                        TextField("ss:// access key", text: $accessKeyText, axis: .vertical)
+                            .font(.system(.body, design: .monospaced))
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .lineLimit(3)
+                            .onChange(of: accessKeyText) { newValue in
+                                parseAccessKey(newValue)
+                            }
+
+                        if let error = accessKeyError {
+                            Text(error)
+                                .foregroundColor(.red)
+                                .font(.caption)
+                        }
+
+                        if let config = profile.outlineConfig {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label("\(config.host):\(config.port)", systemImage: "server.rack")
+                                Label(config.cipher.displayName, systemImage: "lock.shield")
+                                if config.prefix != nil {
+                                    Label("Prefix enabled", systemImage: "eye.slash")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        }
                     }
                 } header: {
                     Text("Outline Server")
                 } footer: {
-                    Text("Paste your Outline access key (ss:// URI)")
+                    if profile.inheritOutlineConfig && !profile.isDefault {
+                        Text("Using Outline server from Master profile")
+                    } else {
+                        Text("Paste your Outline access key (ss:// URI)")
+                    }
                 }
             }
 
@@ -316,9 +348,19 @@ struct ProfileEditView: View {
                 Toggle("Enable DoH", isOn: $profile.dohEnabled)
 
                 if profile.dohEnabled {
-                    TextField("DoH Server URL", text: $profile.dohServerURL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                    if !profile.isDefault {
+                        Toggle("Use Master DoH URL", isOn: $profile.inheritDoH)
+                    }
+
+                    if profile.inheritDoH && !profile.isDefault {
+                        Text(masterProfile?.dohServerURL ?? "https://1.1.1.1/dns-query")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        TextField("DoH Server URL", text: $profile.dohServerURL)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
                 }
             }
 
