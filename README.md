@@ -10,7 +10,6 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
   <img src="Docs/main_screen.PNG" width="250" />
   <img src="Docs/settings_screen.PNG" width="250" />
   <img src="Docs/profile_screen.PNG" width="250" />
-  <img src="Docs/profile_vpn_screen.jpg" width="250" />
 </p>
 
 ## How It Works
@@ -94,6 +93,8 @@ An additional layer of obfuscation. When enabled, the TLS handshake message is w
 ### Outline Server
 
 When VPN type is set to **Outline**, traffic matching that profile's domains is routed through an [Outline](https://getoutline.org/)-compatible Shadowsocks server.
+
+<img src="Docs/profile_vpn_screen.jpg" width="250" />
 
 To configure Outline routing paste your Outline server's `ss://` access key into the **Server Configuration** field
 
