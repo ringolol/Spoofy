@@ -10,7 +10,9 @@ ALTSOURCE = $(ARCHIVE_DIR)/altsource.json
 ALTSOURCE_ALPHA = $(ARCHIVE_DIR)/altsource-alpha.json
 TODAY = $(shell date +%Y-%m-%d)
 
-.PHONY: build release release-alpha _do-release clean
+TEAM_ID := $(shell grep "DEVELOPMENT_TEAM" $(PROJECT)/project.pbxproj | grep -v '""' | head -n 1 | awk -F' = ' '{print $$2}' | tr -d ' ;"')
+
+.PHONY: build install-macos release release-alpha _do-release clean
 
 build:
 	@echo "Archiving $(SCHEME)..."
@@ -60,6 +62,23 @@ endif
 	git commit --allow-empty -m "Release $(TAG_PREFIX)$(VERSION)" && git push
 	@gh release create "$(TAG_PREFIX)$(VERSION)" "$(IPA_PATH)" --title "$(TAG_PREFIX)$(VERSION)" --generate-notes
 	@echo "Released $(TAG_PREFIX)$(VERSION) on GitHub"
+
+CATALYST_BUILD_DIR = build/maccatalyst
+
+install-macos:
+	@echo "Building $(SCHEME) for macOS Catalyst..."
+	xcodebuild build \
+		-project "$(PROJECT)" \
+		-scheme "$(SCHEME)" \
+		-configuration Release \
+		-destination "platform=macOS,variant=Mac Catalyst" \
+		-derivedDataPath "$(CATALYST_BUILD_DIR)" \
+		CODE_SIGN_STYLE=Automatic \
+		DEVELOPMENT_TEAM="$(TEAM_ID)" \
+		| tail -1
+	@rm -rf /Applications/Spoofy.app
+	@cp -R "$(CATALYST_BUILD_DIR)/Build/Products/Release-maccatalyst/Spoofy.app" /Applications/
+	@echo "Installed /Applications/Spoofy.app"
 
 clean:
 	@rm -rf "$(ARCHIVE_PATH)" "$(EXPORT_DIR)" Payload

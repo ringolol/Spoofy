@@ -71,7 +71,7 @@ final class ShadowsocksStream: ConnectionProtocol {
         // The password field in the ss:// URI is the base64-encoded raw key.
         // Try multiple base64 variants: standard, standard+padding, base64url+padding.
         let masterKey: Data
-        if let decoded = Data(base64Encoded: config.password), decoded.count == keyLen {
+        if let decoded = Self.flexibleBase64Decode(config.password), decoded.count == keyLen {
             masterKey = decoded
         } else {
             masterKey = ShadowsocksCrypto.masterKey(from: config.password, keyLen: keyLen)
@@ -289,22 +289,41 @@ final class ShadowsocksStream: ConnectionProtocol {
 
     // MARK: - Target Address Encoding
 
+    /// Decodes a base64 string, trying standard, padded, and base64url variants.
+    private static func flexibleBase64Decode(_ input: String) -> Data? {
+        // Standard base64 as-is
+        if let d = Data(base64Encoded: input) { return d }
+        // Add padding if missing
+        var padded = input
+        let r = padded.count % 4
+        if r != 0 { padded.append(String(repeating: "=", count: 4 - r)) }
+        if let d = Data(base64Encoded: padded) { return d }
+        // Base64url: replace - with +, _ with /, then pad
+        var urlSafe = input
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let r2 = urlSafe.count % 4
+        if r2 != 0 { urlSafe.append(String(repeating: "=", count: 4 - r2)) }
+        return Data(base64Encoded: urlSafe)
+    }
+
     /// Encodes the target host:port as a SOCKS5 address header.
-    /// - Domain: [0x03][len][domain bytes][port big-endian]
     /// - IPv4:   [0x01][4 bytes][port big-endian]
+    /// - Domain: [0x03][len][domain bytes][port big-endian]
+    /// - IPv6:   [0x04][16 bytes][port big-endian]
     private func encodeTargetAddress() -> Data {
         var addr = Data()
         let portBytes = Data([UInt8(targetPort >> 8), UInt8(targetPort & 0xFF)])
 
-        // Check if host is an IPv4 address
         var ipv4Addr = in_addr()
+        var ipv6Addr = in6_addr()
         if inet_pton(AF_INET, targetHost, &ipv4Addr) == 1 {
             addr.append(0x01)
-            withUnsafeBytes(of: &ipv4Addr) { ptr in
-                addr.append(contentsOf: ptr)
-            }
+            withUnsafeBytes(of: &ipv4Addr) { addr.append(contentsOf: $0) }
+        } else if inet_pton(AF_INET6, targetHost, &ipv6Addr) == 1 {
+            addr.append(0x04)
+            withUnsafeBytes(of: &ipv6Addr) { addr.append(contentsOf: $0) }
         } else {
-            // Domain name
             let domainBytes = Array(targetHost.utf8)
             addr.append(0x03)
             addr.append(UInt8(domainBytes.count))
