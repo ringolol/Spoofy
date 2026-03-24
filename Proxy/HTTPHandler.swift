@@ -31,28 +31,36 @@ final class HTTPHandler {
         // VPN mode: route through Outline/Shadowsocks server
         if profile.routeMode == .vpn, let outlineConfig = profile.outlineConfig {
             Self.logger.info("[\(host)] VPN mode, connecting via Outline...")
-            ShadowsocksStream.connect(config: outlineConfig, targetHost: host, targetPort: port, queue: queue) { stream in
-                guard let stream = stream else {
-                    Self.logger.error("[\(host)] Failed to connect to Outline server")
-                    clientConn.cancel()
-                    completion()
-                    return
-                }
-
-                // Forward the raw HTTP request through the Shadowsocks stream
-                stream.send(content: request.rawData, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { error in
-                    if let error = error {
-                        Self.logger.error("[\(host)] Failed to send request via Outline: \(error.localizedDescription)")
-                        stream.cancel()
+            let connectVPN = { (targetHost: String) in
+                ShadowsocksStream.connect(config: outlineConfig, targetHost: targetHost, targetPort: port, queue: self.queue) { stream in
+                    guard let stream = stream else {
+                        Self.logger.error("[\(host)] Failed to connect to Outline server")
                         clientConn.cancel()
                         completion()
                         return
                     }
-                    ConnectionRelay.relay(left: clientConn, right: stream, label: host, queue: self.queue) {
-                        stream.cancel()
-                        completion()
-                    }
-                })
+
+                    stream.send(content: request.rawData, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { error in
+                        if let error = error {
+                            Self.logger.error("[\(host)] Failed to send request via Outline: \(error.localizedDescription)")
+                            stream.cancel()
+                            clientConn.cancel()
+                            completion()
+                            return
+                        }
+                        ConnectionRelay.relay(left: clientConn, right: stream, label: host, queue: self.queue) {
+                            stream.cancel()
+                            completion()
+                        }
+                    })
+                }
+            }
+            if let resolver = dohResolver {
+                resolver.resolve(domain: host) { ips in
+                    connectVPN(ips?.first ?? host)
+                }
+            } else {
+                connectVPN(host)
             }
             return
         }

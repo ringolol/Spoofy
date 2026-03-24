@@ -310,15 +310,15 @@ struct ProfileEditView: View {
 
                     Toggle("TLS Record Fragmentation", isOn: $profile.tlsRecordFragmentation)
                 }
+            }
 
-                Section("DNS over HTTPS") {
-                    Toggle("Enable DoH", isOn: $profile.dohEnabled)
+            Section("DNS over HTTPS") {
+                Toggle("Enable DoH", isOn: $profile.dohEnabled)
 
-                    if profile.dohEnabled {
-                        TextField("DoH Server URL", text: $profile.dohServerURL)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                    }
+                if profile.dohEnabled {
+                    TextField("DoH Server URL", text: $profile.dohServerURL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                 }
             }
 

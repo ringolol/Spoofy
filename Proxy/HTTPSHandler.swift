@@ -43,18 +43,29 @@ final class HTTPSHandler {
             // VPN mode: route through Outline/Shadowsocks server
             if profile.routeMode == .vpn, let outlineConfig = profile.outlineConfig {
                 Self.logger.info("[\(host)] VPN mode, connecting via Outline...")
-                ShadowsocksStream.connect(config: outlineConfig, targetHost: host, targetPort: port, queue: self.queue) { stream in
-                    guard let stream = stream else {
-                        Self.logger.error("[\(host)] Failed to connect to Outline server")
-                        clientConn.cancel()
-                        completion()
-                        return
+                let connectVPN = { (targetHost: String) in
+                    ShadowsocksStream.connect(config: outlineConfig, targetHost: targetHost, targetPort: port, queue: self.queue) { stream in
+                        guard let stream = stream else {
+                            Self.logger.error("[\(host)] Failed to connect to Outline server")
+                            clientConn.cancel()
+                            completion()
+                            return
+                        }
+                        Self.logger.info("[\(host)] Outline connected, starting relay")
+                        ConnectionRelay.relay(left: clientConn, right: stream, label: host, queue: self.queue) {
+                            stream.cancel()
+                            completion()
+                        }
                     }
-                    Self.logger.info("[\(host)] Outline connected, starting relay")
-                    ConnectionRelay.relay(left: clientConn, right: stream, label: host, queue: self.queue) {
-                        stream.cancel()
-                        completion()
+                }
+                if let resolver = dohResolver {
+                    resolver.resolve(domain: host) { ips in
+                        let resolved = ips?.first ?? host
+                        if resolved != host { Self.logger.debug("[\(host)] DoH resolved to \(resolved)") }
+                        connectVPN(resolved)
                     }
+                } else {
+                    connectVPN(host)
                 }
                 return
             }
