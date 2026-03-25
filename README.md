@@ -28,7 +28,7 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 
 - **No system-wide VPN** — Spoofy only works over Wi-Fi and requires [manual proxy configuration](#setting-up-wi-fi-proxy-on-iphone). Cellular traffic is not covered. See [App Store & VPN Mode](#app-store--vpn-mode) for why.
 - **No official App Store release** — you must sideload the app yourself or use the [AltStore source](#altstore). See [App Store & VPN Mode](#app-store--vpn-mode) for details.
-- **Fully vibe-coded** — most of the code has never been reviewed by a human. Testing has been limited to running on a physical device and WireShark packet inspection. Use at your own risk.
+- **Vibe-coded** — most of the code has never been reviewed by a human. Testing has been limited to running on a physical device and WireShark packet inspection. Use at your own risk.
 
 ---
 
