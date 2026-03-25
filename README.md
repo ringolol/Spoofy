@@ -169,7 +169,7 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 1. Go to the [Releases](https://github.com/ringolol/Spoofy/releases) page
 2. Download `Spoofy-macOS.zip` from the latest release
 3. Extract the zip and move `Spoofy.app` to your Applications folder
-4. On first launch, macOS will block the app because it is not signed. Right-click the app and select **Open** to trigger the warning, then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
+4. On first launch, macOS will block the app because it is not signed. Try openning the app and then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
 
 ### Option 2: Build and install with Make
 
