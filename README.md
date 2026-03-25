@@ -4,24 +4,17 @@ A DPI (Deep Packet Inspection) bypass tool for iOS and macOS. Inspired by [Spoof
 
 <img src="Docs/clip.gif" height="550">
 
-Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI (Server Name Indication) and blocking your traffic.
+Spoofy runs a local proxy that intercepts HTTP/HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI (Server Name Indication) and blocking your traffic. It also routes selected domains through an Outline server.
 
 > ⚠️ This project is fully vibe-coded.
-
-## How It Works
-
-1. Spoofy starts a local HTTP/HTTPS proxy server on your device (default port `8090`)
-2. When an HTTPS connection is made, the proxy intercepts the TLS ClientHello
-3. The ClientHello is fragmented using the configured split strategy so that DPI cannot reconstruct the SNI field from a single packet
-4. Each fragment is sent as a separate TCP packet (`TCP_NODELAY`) to defeat reassembly
 
 ## Features
 
 - TCP and TLS fragmentations to prevent DPI blocking
 - DNS-over-HTTPS to prevent DNS-based blocking
-- Outline server support — route matched domains through an Outline server
-- Per Domain Profiles. Allows to precisely configure which rules work for which domain
-- Export / Import settings
+- Outline support — route matched domains through an Outline server
+- Per Domain Profiles. Allows to precisely configure which rules work for which domains
+- Export and Import settings
 - LAN Server. Allows other devices on the same local network to connect to the proxy.
 
 ## Limitations
@@ -31,7 +24,6 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 - **Vibe-coded** — most of the code has never been reviewed by a human. Testing has been limited to running on a physical device and WireShark packet inspection. Use at your own risk.
 
 ---
-
 
 ## Configuration Guide
 
@@ -169,7 +161,7 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 1. Go to the [Releases](https://github.com/ringolol/Spoofy/releases) page
 2. Download `Spoofy-macOS.zip` from the latest release
 3. Extract the zip and move `Spoofy.app` to your Applications folder
-4. On first launch, macOS will block the app because it is not signed. Right-click the app and select **Open** to trigger the warning, then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
+4. On first launch, macOS will block the app because it is not signed. Try openning the app and then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
 
 ### Option 2: Build and install with Make
 
@@ -190,20 +182,6 @@ This builds the Mac Catalyst version, signs it with your development team, and c
 
 ---
 
-## Building
-
-### Requirements
-- iOS 15.0+
-- Xcode 15+
-
-### Steps
-1. Clone the repository
-2. Open `Spoofy.xcodeproj` in Xcode
-3. Set your development team and update the bundle identifier to match your team
-4. Build and run on your device
-
----
-
 ## For Developers
 
 ### Releasing a New Version
@@ -212,10 +190,3 @@ This builds the Mac Catalyst version, signs it with your development team, and c
 make release VERSION=1.2 DESCRIPTION="Bug fixes and improvements"
 ```
 Bumps the Xcode project version, archives the app, updates `altsource.json`, and creates a GitHub Release.
-
-### Build and install to the Applications the macOS version
-
-```
-make install-macos
-```
-It tries to build and sign the app and then copy it to the Applications
