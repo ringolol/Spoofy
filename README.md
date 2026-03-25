@@ -1,6 +1,6 @@
 # Spoofy
 
-A native iOS DPI (Deep Packet Inspection) bypass tool inspired by [SpoofDPI](https://github.com/xvzc/SpoofDPI).
+A DPI (Deep Packet Inspection) bypass tool for iOS and macOS. Inspired by [SpoofDPI](https://github.com/xvzc/SpoofDPI).
 
 <img src="Docs/clip.gif" height="550">
 
@@ -147,18 +147,24 @@ You need to manually configure your iPhone's Wi-Fi proxy settings to route traff
 
 ---
 
-## AltStore
+## Install iOS
+
+### AltStore
 
 [AltStore](https://altstore.io/) source: https://raw.githubusercontent.com/ringolol/Spoofy/main/altstore/altsource.json
 
----
-
-## App Store & VPN Mode
+### App Store & VPN Mode
 
 Spoofy is **not available on the App Store** and does not support VPN mode. Both require an Apple Developer Program membership ($99/year), which the developer does not have. Because of this:
 
 - **No App Store distribution** — you need to build the app yourself with Xcode and sideload it onto your device (e.g., using a free Apple ID or [AltStore](https://altstore.io/)) or use the AltStore source provided. *Though the license permits anyone with a Developer account to publish Spoofy on the App Store.*
 - **No VPN mode** — iOS Network Extensions (which enable system-wide VPN-based proxying) require entitlements that are only available through the paid Developer Program. Instead, Spoofy works as a local proxy that you connect to via Wi-Fi proxy settings.
+
+---
+
+## Install macOS
+
+...
 
 ---
 
