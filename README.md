@@ -164,7 +164,29 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 
 ## Install macOS
 
-...
+### Option 1: Download from GitHub Releases
+
+1. Go to the [Releases](https://github.com/ringolol/Spoofy/releases) page
+2. Download `Spoofy-macOS.zip` from the latest release
+3. Extract the zip and move `Spoofy.app` to your Applications folder
+4. On first launch, macOS will block the app because it is not signed. Right-click the app and select **Open** to trigger the warning, then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
+
+### Option 2: Build and install with Make
+
+```
+make install-macos
+```
+
+This builds the Mac Catalyst version, signs it with your development team, and copies it to `/Applications`.
+
+### Setting Up the Proxy on macOS
+
+1. Start Spoofy and tap the start button
+2. Open **System Settings → Network → Wi-Fi** (or your active connection)
+3. Click **Details…** → **Proxies**
+4. Enable **Web Proxy (HTTP)** and **Secure Web Proxy (HTTPS)**
+5. Set both to `127.0.0.1` port `8090` (or your configured port)
+6. Click **OK**, then **Apply**
 
 ---
 
