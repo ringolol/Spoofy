@@ -4,16 +4,9 @@ A DPI (Deep Packet Inspection) bypass tool for iOS and macOS. Inspired by [Spoof
 
 <img src="Docs/clip.gif" height="550">
 
-Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI (Server Name Indication) and blocking your traffic.
+Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI (Server Name Indication) and blocking your traffic. It also routes selected domains through an Outline server.
 
 > ⚠️ This project is fully vibe-coded.
-
-## How It Works
-
-1. Spoofy starts a local HTTP/HTTPS proxy server on your device (default port `8090`)
-2. When an HTTPS connection is made, the proxy intercepts the TLS ClientHello
-3. The ClientHello is fragmented using the configured split strategy so that DPI cannot reconstruct the SNI field from a single packet
-4. Each fragment is sent as a separate TCP packet (`TCP_NODELAY`) to defeat reassembly
 
 ## Features
 
@@ -31,7 +24,6 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 - **Vibe-coded** — most of the code has never been reviewed by a human. Testing has been limited to running on a physical device and WireShark packet inspection. Use at your own risk.
 
 ---
-
 
 ## Configuration Guide
 
