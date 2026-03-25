@@ -190,20 +190,6 @@ This builds the Mac Catalyst version, signs it with your development team, and c
 
 ---
 
-## Building
-
-### Requirements
-- iOS 15.0+
-- Xcode 15+
-
-### Steps
-1. Clone the repository
-2. Open `Spoofy.xcodeproj` in Xcode
-3. Set your development team and update the bundle identifier to match your team
-4. Build and run on your device
-
----
-
 ## For Developers
 
 ### Releasing a New Version
@@ -212,10 +198,3 @@ This builds the Mac Catalyst version, signs it with your development team, and c
 make release VERSION=1.2 DESCRIPTION="Bug fixes and improvements"
 ```
 Bumps the Xcode project version, archives the app, updates `altsource.json`, and creates a GitHub Release.
-
-### Build and install to the Applications the macOS version
-
-```
-make install-macos
-```
-It tries to build and sign the app and then copy it to the Applications
