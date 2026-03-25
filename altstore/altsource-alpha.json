@@ -21,9 +21,11 @@
       "iconURL": "https://raw.githubusercontent.com/ringolol/Spoofy/main/icon_macos.png",
       "size": 336446,
       "screenshotURLs": [
+        "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/clip.gif",
         "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/main_screen.PNG",
         "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/settings_screen.PNG",
-        "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/profile_screen.PNG"
+        "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/profile_screen.PNG",
+        "https://raw.githubusercontent.com/ringolol/Spoofy/main/Docs/profile_vpn_screen.jpg"
       ]
     }
   ],
