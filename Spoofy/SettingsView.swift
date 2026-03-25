@@ -276,7 +276,11 @@ struct ProfileEditView: View {
                     if profile.inheritOutlineConfig && !profile.isDefault {
                         if let config = masterProfile?.outlineConfig {
                             VStack(alignment: .leading, spacing: 4) {
-                                Label("\(config.host):\(config.port)", systemImage: "server.rack")
+                                Label {
+                                    Text(verbatim: "\(config.host):\(String(config.port))")
+                                } icon: {
+                                    Image(systemName: "server.rack")
+                                }
                                 Label(config.cipher.displayName, systemImage: "lock.shield")
                                 if config.prefix != nil {
                                     Label("Prefix enabled", systemImage: "eye.slash")
@@ -307,7 +311,11 @@ struct ProfileEditView: View {
 
                         if let config = profile.outlineConfig {
                             VStack(alignment: .leading, spacing: 4) {
-                                Label("\(config.host):\(config.port)", systemImage: "server.rack")
+                                Label {
+                                    Text(verbatim: "\(config.host):\(String(config.port))")
+                                } icon: {
+                                    Image(systemName: "server.rack")
+                                }
                                 Label(config.cipher.displayName, systemImage: "lock.shield")
                                 if config.prefix != nil {
                                     Label("Prefix enabled", systemImage: "eye.slash")
@@ -374,7 +382,7 @@ struct ProfileEditView: View {
                 } header: {
                     Text("Domains")
                 } footer: {
-                    Text("One pattern per line. Examples: *.example.com, example.*, *.youtube.*")
+                    Text(verbatim: "One pattern per line. Examples: *.example.com, example.*, *.youtube.*")
                 }
             }
         }
