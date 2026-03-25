@@ -2,7 +2,7 @@
 
 A native iOS DPI (Deep Packet Inspection) bypass tool inspired by [SpoofDPI](https://github.com/xvzc/SpoofDPI).
 
-<p align="center"><img src="Docs/clip.gif" height="550"></p>
+<img src="Docs/clip.gif" height="550">
 
 Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS ClientHello packets, preventing DPI engines from reading the SNI (Server Name Indication) and blocking your traffic.
 
