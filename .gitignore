@@ -63,3 +63,6 @@ fastlane/test_output
 
 build/
 *.xcarchive
+
+altstore/
+!altstore/*.json
