@@ -8,12 +8,6 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 
 > ⚠️ This project is fully vibe-coded.
 
-<p align="center">
-  <img src="Docs/main_screen.PNG" width="250" />
-  <img src="Docs/settings_screen.PNG" width="250" />
-  <img src="Docs/profile_screen.PNG" width="250" />
-</p>
-
 ## How It Works
 
 1. Spoofy starts a local HTTP/HTTPS proxy server on your device (default port `8090`)
@@ -38,13 +32,17 @@ Spoofy runs a local proxy that intercepts HTTPS connections and fragments TLS Cl
 
 ---
 
+
 ## Configuration Guide
 
 ### Profiles
 
 Spoofy uses a profile system to apply different bypass strategies to different domains.
 
-<img src="Docs/settings_screen.PNG" width="250" />
+<p align="left">
+  <img src="Docs/settings_screen.PNG" width="250" />
+  <img src="Docs/profile_screen.PNG" width="250" />
+</p>
 
 #### Master Profile
 
