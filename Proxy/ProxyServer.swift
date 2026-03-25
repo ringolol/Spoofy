@@ -72,12 +72,13 @@ final class ProxyServer {
 
     private func handleNewConnection(_ clientConn: NWConnection) {
         guard activeConnections.value < Self.maxConcurrentConnections else {
-            Self.logger.warning("Max connections reached, rejecting")
+            Self.logger.warning("Max connections reached (\(self.activeConnections.value, privacy: .public)), rejecting")
             clientConn.cancel()
             return
         }
 
         activeConnections.increment()
+        Self.logger.info("Connection opened (active: \(self.activeConnections.value, privacy: .public))")
 
         clientConn.stateUpdateHandler = { [weak self] state in
             switch state {
@@ -99,6 +100,7 @@ final class ProxyServer {
     private func closeConnection(_ clientConn: NWConnection) {
         clientConn.cancel()
         activeConnections.decrement()
+        Self.logger.info("Connection closed (active: \(self.activeConnections.value, privacy: .public))")
     }
 
     private func readRequest(from clientConn: NWConnection) {

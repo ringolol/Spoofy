@@ -338,23 +338,38 @@ final class HTTPSHandler {
     }
 
     private func waitForReady(conn: NWConnection, host: String, completion: @escaping (NWConnection?) -> Void) {
+        let completed = LockedFlag()
+
         conn.stateUpdateHandler = { state in
             Self.logger.debug("[\(host)] Server conn state: \(String(describing: state))")
             switch state {
             case .ready:
                 conn.stateUpdateHandler = nil
+                guard completed.setIfFalse() else { return }
                 completion(conn)
             case .failed(let error):
                 Self.logger.error("[\(host)] Server conn failed: \(error.localizedDescription)")
                 conn.stateUpdateHandler = nil
+                guard completed.setIfFalse() else { return }
+                conn.cancel()
                 completion(nil)
             case .cancelled:
                 conn.stateUpdateHandler = nil
+                guard completed.setIfFalse() else { return }
                 completion(nil)
             default:
                 break
             }
         }
         conn.start(queue: queue)
+
+        // Timeout: if connection doesn't become ready within 10 seconds, give up
+        queue.asyncAfter(deadline: .now() + 10) {
+            guard completed.setIfFalse() else { return }
+            Self.logger.warning("[\(host)] Server connect timeout")
+            conn.stateUpdateHandler = nil
+            conn.cancel()
+            completion(nil)
+        }
     }
 }

@@ -123,18 +123,31 @@ final class HTTPHandler {
     }
 
     private func waitForReady(conn: NWConnection, completion: @escaping (NWConnection?) -> Void) {
+        let completed = LockedFlag()
+
         conn.stateUpdateHandler = { state in
             switch state {
             case .ready:
                 conn.stateUpdateHandler = nil
+                guard completed.setIfFalse() else { return }
                 completion(conn)
             case .failed, .cancelled:
                 conn.stateUpdateHandler = nil
+                guard completed.setIfFalse() else { return }
+                conn.cancel()
                 completion(nil)
             default:
                 break
             }
         }
         conn.start(queue: queue)
+
+        // Timeout: if connection doesn't become ready within 10 seconds, give up
+        queue.asyncAfter(deadline: .now() + 10) {
+            guard completed.setIfFalse() else { return }
+            conn.stateUpdateHandler = nil
+            conn.cancel()
+            completion(nil)
+        }
     }
 }

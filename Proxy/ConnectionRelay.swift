@@ -48,7 +48,7 @@ final class ConnectionRelay {
             if activity.secondsSinceLast() > idleTimeoutSeconds {
                 if completed.setIfFalse() {
                     logger.debug("Relay idle timeout \(label)")
-            
+                    timer.cancel()
                     left.cancel()
                     right.cancel()
                     completion()
