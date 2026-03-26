@@ -12,6 +12,7 @@ final class ProxyServer {
     private var listener: NWListener?
     private let httpHandler: HTTPHandler
     private let httpsHandler: HTTPSHandler
+    private let socks5Handler: SOCKS5Handler
     private let activeConnections = AtomicCounter()
     private let proxyQueue = DispatchQueue(label: "com.rnglol.Spoofy.proxy", qos: .userInitiated, attributes: .concurrent)
     private let resolverCache = DoHResolverCache()
@@ -21,6 +22,7 @@ final class ProxyServer {
         self.settings = settings
         self.httpHandler = HTTPHandler(queue: proxyQueue, settings: settings, resolverCache: resolverCache)
         self.httpsHandler = HTTPSHandler(queue: proxyQueue, settings: settings, resolverCache: resolverCache)
+        self.socks5Handler = SOCKS5Handler(queue: proxyQueue, settings: settings, resolverCache: resolverCache)
     }
 
     func start(completion: @escaping (Error?) -> Void) {
@@ -116,6 +118,14 @@ final class ProxyServer {
 
             guard let data = content, !data.isEmpty else {
                 self.closeConnection(clientConn)
+                return
+            }
+
+            // SOCKS5 greeting starts with version byte 0x05; HTTP always starts with ASCII letter
+            if data[0] == 0x05 {
+                self.socks5Handler.handleGreeting(clientConn: clientConn, data: data) {
+                    self.closeConnection(clientConn)
+                }
                 return
             }
 

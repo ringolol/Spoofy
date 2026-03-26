@@ -91,6 +91,14 @@ struct SettingsView: View {
                         settings.allowLANAccess = newValue
                     }
             }
+
+            Section {
+                Text("Spoofy v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+            }
         }
         .navigationTitle("Settings")
         .toolbar {

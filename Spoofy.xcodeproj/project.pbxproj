@@ -17,6 +17,7 @@
 		7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA87CBA2F5F2B4B00819091 /* ContentView.swift */; };
 		7FA87CBD2F5F2B4D00819091 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */; };
 		7FA87CC02F5F2B4D00819091 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */; };
+		7FE5219A2F749F3300F0BA0C /* SOCKS5Handler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */; };
 		9542604D3D1E3F43F900321B /* HTTPSHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0005 /* HTTPSHandler.swift */; };
 		9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */; };
 		AA00000100000001AABB000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000E /* SettingsView.swift */; };
@@ -39,6 +40,7 @@
 		7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		7FE364DF2F6BAC66004F5832 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOCKS5Handler.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0002 /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0003 /* HTTPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPParser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0004 /* HTTPHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPHandler.swift; sourceTree = "<group>"; };
@@ -116,6 +118,7 @@
 		AA00000300000001AABB0001 /* Proxy */ = {
 			isa = PBXGroup;
 			children = (
+				7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */,
 				AA00000200000001AABB0002 /* ProxyServer.swift */,
 				AA00000200000001AABB0003 /* HTTPParser.swift */,
 				AA00000200000001AABB0004 /* HTTPHandler.swift */,
@@ -236,6 +239,7 @@
 				7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */,
 				AA00000100000001AABB000E /* SettingsView.swift in Sources */,
 				AA00000100000001AABB000F /* AppSettings.swift in Sources */,
+				7FE5219A2F749F3300F0BA0C /* SOCKS5Handler.swift in Sources */,
 				9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */,
 				FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */,
 				449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */,
