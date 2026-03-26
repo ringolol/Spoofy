@@ -20,7 +20,7 @@ Spoofy is a local HTTP/SOCKS5 proxy that bypasses Deep Packet Inspection by frag
 
 ## Limitations
 
-- **No system-wide VPN** — Spoofy is a local proxy, not a VPN. On iOS you can use it via [Wi-Fi proxy settings](#setting-up-wi-fi-proxy-on-iphone) or from any app that supports HTTP/SOCKS5 proxies. Cellular traffic is not covered. See [App Store & VPN Mode](#app-store--vpn-mode) for why.
+- **No system-wide VPN** — Spoofy is a local proxy, not a VPN. On iOS you can use it via [Wi-Fi proxy settings](#setting-up-wi-fi-proxy-on-iphone) or from an app that supports HTTP/SOCKS5 proxies (like Telegram). Cellular traffic is not covered. See [App Store & VPN Mode](#app-store--vpn-mode) for why.
 - **No official App Store release** — you must sideload the app yourself or use the [AltStore source](#altstore). See [App Store & VPN Mode](#app-store--vpn-mode) for details.
 - **Vibe-coded** — most of the code has never been reviewed by a human. Testing has been limited to running on a physical device and WireShark packet inspection. Use at your own risk.
 
