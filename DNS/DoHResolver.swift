@@ -124,7 +124,7 @@ final class DoHResolver {
     }
 
     /// Parse a DNS response, extracting A and AAAA record IPs and minimum TTL.
-    private func parseDNSResponse(data: Data) -> (ips: [String], ttl: UInt32) {
+    func parseDNSResponse(data: Data) -> (ips: [String], ttl: UInt32) {
         guard data.count >= 12 else { return ([], 300) }
 
         // Check RCODE (lower 4 bits of byte 3)

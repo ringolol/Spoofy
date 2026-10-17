@@ -10,6 +10,11 @@ final class DNSCache {
     private var cache: [String: Entry] = [:]
     private let lock = NSLock()
     private let maxEntries = 500
+    private let now: () -> Date
+
+    init(now: @escaping () -> Date = Date.init) {
+        self.now = now
+    }
 
     func get(domain: String) -> [String]? {
         lock.lock()
@@ -17,7 +22,7 @@ final class DNSCache {
 
         guard let entry = cache[domain] else { return nil }
 
-        if Date() > entry.expiry {
+        if now() > entry.expiry {
             cache.removeValue(forKey: domain)
             return nil
         }
@@ -39,7 +44,7 @@ final class DNSCache {
 
         cache[domain] = Entry(
             ips: ips,
-            expiry: Date().addingTimeInterval(TimeInterval(ttl))
+            expiry: now().addingTimeInterval(TimeInterval(ttl))
         )
     }
 }

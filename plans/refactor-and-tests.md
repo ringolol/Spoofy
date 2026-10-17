@@ -86,6 +86,8 @@ Each finding has an ID that later phases refer to.
 | N10 | `DoHResolver` | Queries A records only, so IPv6-only hosts fail. It sends DoH queries for IP literals. Callers use only `ips.first`, so a single dead IP fails the connection. | Skip DoH for IP literals. Query A and AAAA in parallel. Return all addresses; the `Dialer` tries them in order with a 250 ms stagger (SpoofDPI `DialFastest`). |
 | N11 | `HTTPSHandler.waitForReady` (all 3 copies) | `.waiting(error)` is ignored, so an unreachable host waits the full 10 seconds. This was also noted in network-scanner §1. | The `Dialer` treats `.waiting` as a failure for that address and moves to the next one. |
 | N12 | `ConnectionRelay.pipe` | EOF on one side cancels the other immediately, so there is no half-close. This matches SpoofDPI but breaks request/response protocols that half-close (rare over 443). | **Keep the current behaviour** in the refactor, behind a `RelayPolicy.closeOnFirstEOF` default. Note half-close as a possible follow-up. Don't change two things at once. |
+| N13 | `OutlineAccessKey.urlDecodeBytes` | Found in Phase 2. The `prefix=` value is percent-decoded into raw bytes. outline-sdk (`configurl.parseStringPrefix`) instead percent-decodes it into a UTF-8 **string** and maps each code point ≤ 0xFF to one byte. So `%C2%A8` must become the single byte `0xA8`, but Spoofy produces `c2 a8`. Every prefix with a byte ≥ 0x80 is wrong, including the TLS-ClientHello prefix from Outline's prefixing guide (`%16%03%01%00%C2%A8%01%01`). | Percent-decode, UTF-8-decode, then map each scalar to a byte. Reject scalars above 0xFF, as outline-sdk does. Test: `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes`. |
+| N14 | `ConnectionRelay.pipe` (send error path) | Found in Phase 2. On a write error the pipe cancels only its **source**. The opposite pipe stays parked in `receive` on the destination, so the relay doesn't complete and the slot stays held until the 120-second idle timeout. A failed `NWConnection` usually also fails its pending receive, which hides this. A `ShadowsocksStream` destination doesn't. | Cancel both sides on a write error, as the read-error path already does. Test: `ConnectionRelayTests.testWriteErrorStopsTheRelay`. |
 
 ### 2.4 Minor (P3)
 
@@ -174,6 +176,27 @@ The core folders (`Proxy/`, `TLS/`, `DNS/`, `Shadowsocks/`, `Shared/`) import on
 - **Known-bug tests.** Each P1/P2 finding gets a test asserting the *correct* behaviour, wrapped in `XCTExpectFailure("U3: substring match")` until it is fixed. The test suite stays green, and the fix commit removes the wrapper. Crashes (C*) cannot be expected-failures, because a trap kills the test process. They are fixed in Phase 0 first.
 
 ### 5.1 Unit tests (pure logic, no I/O)
+
+**Status (Phase 2, 2026-10-17): done for everything that the current code can be tested on.** The suite has 103 tests. Fixtures are real ClientHellos captured from Go's `crypto/tls`, plus a `ClientHelloBuilder` for edge cases. The AEAD known-answer values come from Go: `x/crypto/chacha20poly1305` and stdlib GCM, with no AAD. Shadowsocks has no AAD, so the RFC 8439 vector can't go through `aeadEncrypt`. Production seams added: `DNSCache(now:)`; `parseDNSResponse` made internal; `ConnectionRelay.relay(idleTimeout:idleCheckInterval:)`.
+
+Expected-failure ledger. Each item flips to a passing test when its fix lands; remove the `XCTExpectFailure` or `XCTSkipIf` at that point.
+
+| Finding | Test | Mechanism |
+|---------|------|-----------|
+| U3 | `DomainMatcherTests.testBothWildcardsAreLabelAware` | `XCTExpectFailure` |
+| U4 | `SettingsStoreTests.testCorruptedProfilesBlobIsPreserved` | `XCTExpectFailure` |
+| U5 | `SettingsStoreTests.testImportRejectsMissingMaster`, `testImportRejectsDuplicateIDs` | `XCTExpectFailure` |
+| U8 | `TLSDesyncerTests.testSNIModeHonoursRecordFragmentation` | `XCTExpectFailure` |
+| N2 | `OutlineAccessKeyTests.testPrefixLongerThanSaltIsRejected` | `XCTExpectFailure` |
+| N13 | `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes` | `XCTExpectFailure` |
+| N14 | `ConnectionRelayTests.testWriteErrorStopsTheRelay` | `XCTExpectFailure` |
+| M4 | `SettingsStoreTests.testOutOfRangePortFallsBack` | `XCTSkipIf`, because it traps |
+| M5 | `TLSParserTests.testParsesFromDataSlice` | `XCTSkipIf`, because it traps |
+
+These items need the seams from later phases, so they are deferred:
+- `ShadowsocksFramingTests` (§6.8).
+- The N10 IP-literal short-circuit, which needs an injectable resolver transport (Phase 3).
+- The §5.2 SOCKS5 and CONNECT session tests (§6.4/6.5).
 
 **`TLSParserTests`**
 - `TLSMessage.parse` on a real Chrome ClientHello and a real Firefox ClientHello (captured hex in `Fixtures/`). Checks: `isClientHello`, record length, SNI offset pointing at the hostname bytes.
@@ -580,14 +603,14 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 |-------|-------------|------|
 | 0 | Hotfixes C1–C3, U1, U6, U9, U10 → release v1.5.9 | Manual check; throwaway script for C1 |
 | 1 | Root `Package.swift` (`SpoofyCore` + `SpoofyCoreTests`) and `make test` = `swift test` | Smoke KAT passes on macOS; the Xcode app build is unchanged |
-| 2 | §5.1 unit tests (with expected failures for open bugs) and `FakeConnection` relay tests | Green |
+| 2 | §5.1 unit tests (with expected failures for open bugs) and `FakeConnection` relay tests. **Done**: see the §5.1 status | Green |
 | 3 | Loopback harness (§5.3). `ProxyServer` exposes its port; resolver and config injected | Scenarios 1–4 green against the **current** handlers |
-| 4a | Serial session queues (§6.1), M1, M2 | All tests green |
+| 4a | Serial session queues (§6.1), M1, M2, N14 | All tests green |
 | 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers; N10, N11 | Green; network-scanner §1 is unblocked |
 | 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8 | Expected-failures for U7, N7 and U8 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7 | §5.2 session tests and harness scenarios 1–5 green |
 | 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, M4, M6 | Characterization tests decide U3 semantics |
-| 4f | Shadowsocks codec extraction and N1–N5 | Codec KATs and opt-in interop scenario 6 green |
+| 4f | Shadowsocks codec extraction, N1–N5 and N13 | Codec KATs and opt-in interop scenario 6 green |
 | 4g | App layer U11, U12, M3 | Manual: call interruption test on device |
 
 Each row is one PR-sized change. Steps 4a–4c are mechanical and low-risk. Step 4d is the big one, and it lands only when the harness is green against the old handlers, so the harness is the contract.

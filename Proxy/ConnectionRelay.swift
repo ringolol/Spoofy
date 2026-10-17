@@ -29,6 +29,8 @@ final class ConnectionRelay {
         right: any ConnectionProtocol,
         label: String = "",
         queue: DispatchQueue,
+        idleTimeout: Double = idleTimeoutSeconds,
+        idleCheckInterval: DispatchTimeInterval = .seconds(idleCheckIntervalSeconds),
         completion: @escaping () -> Void
     ) {
         logger.debug("Relay started \(label)")
@@ -41,11 +43,11 @@ final class ConnectionRelay {
         // Idle timeout: periodically check if connection has been inactive
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(
-            deadline: .now() + .seconds(idleCheckIntervalSeconds),
-            repeating: .seconds(idleCheckIntervalSeconds)
+            deadline: .now() + idleCheckInterval,
+            repeating: idleCheckInterval
         )
         timer.setEventHandler {
-            if activity.secondsSinceLast() > idleTimeoutSeconds {
+            if activity.secondsSinceLast() > idleTimeout {
                 if completed.setIfFalse() {
                     logger.debug("Relay idle timeout \(label)")
                     timer.cancel()
