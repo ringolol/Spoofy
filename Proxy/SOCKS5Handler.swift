@@ -11,12 +11,16 @@ final class SOCKS5Handler {
     private let resolverCache: DoHResolverCache
     private let dialer: Dialing
     private let session: SessionScope
+    /// How long a split-mode tunnel waits for the client to speak before relaying as-is (U7).
+    private let firstByteTimeout: TimeInterval
     /// The session's serial queue: every connection, timer and callback of this session runs here.
     private let queue: DispatchQueue
 
     /// One handler per session; its callbacks keep it alive until the session ends.
-    init(session: SessionScope, settings: AppSettings, resolverCache: DoHResolverCache, dialer: Dialing) {
+    init(session: SessionScope, settings: AppSettings, resolverCache: DoHResolverCache, dialer: Dialing,
+         firstByteTimeout: TimeInterval) {
         self.session = session
+        self.firstByteTimeout = firstByteTimeout
         self.queue = session.queue
         self.settings = settings
         self.resolverCache = resolverCache
@@ -322,177 +326,47 @@ final class SOCKS5Handler {
                     return
                 }
 
-                // TLS-aware fragmentation: peek at client's first bytes
+                // TLS-aware fragmentation: read the client's first flight
                 Self.logger.info("[\(host)] SOCKS5 reading ClientHello...")
-                self.readClientHello(from: clientConn, serverConn: serverConn, host: host, profile: profile, completion: completion)
+                self.desyncAndRelay(clientConn: clientConn, serverConn: serverConn, host: host, profile: profile, completion: completion)
             }
         }
     }
 
-    // MARK: - TLS Fragmentation (mirrors HTTPSHandler)
+    // MARK: - TLS Fragmentation
 
-    private func readClientHello(
-        from clientConn: NWConnection,
-        serverConn: NWConnection,
-        host: String,
-        profile: SpoofProfile,
-        completion: @escaping () -> Void
-    ) {
-        clientConn.receive(minimumIncompleteLength: 5, maximumLength: 16389) { [self] content, _, _, error in
-            if let error = error {
-                Self.logger.error("[\(host)] ClientHello read error: \(error.localizedDescription)")
-                serverConn.cancel()
-                clientConn.cancel()
-                completion()
-                return
-            }
-
-            guard let data = content, !data.isEmpty else {
-                Self.logger.warning("[\(host)] Empty first data after SOCKS5 handshake")
-                serverConn.cancel()
-                clientConn.cancel()
-                completion()
-                return
-            }
-
-            // Not TLS? Forward raw and relay
-            guard data.count >= 5, data[0] == 0x16 else {
-                Self.logger.info("[\(host)] Not TLS, forwarding \(data.count) raw bytes")
-                serverConn.send(content: data, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { _ in
-                    ConnectionRelay.relay(left: clientConn, right: serverConn, label: host, queue: self.queue) {
-                        serverConn.cancel()
-                        completion()
-                    }
-                })
-                return
-            }
-
-            self.ensureFullTLSRecord(data: data, from: clientConn, host: host) { fullData in
-                guard let fullData = fullData else {
-                    serverConn.cancel()
-                    clientConn.cancel()
-                    completion()
-                    return
-                }
-                self.processClientHello(data: fullData, clientConn: clientConn, serverConn: serverConn, host: host, profile: profile, completion: completion)
-            }
-        }
-    }
-
-    private func ensureFullTLSRecord(
-        data: Data,
-        from conn: NWConnection,
-        host: String,
-        completion: @escaping (Data?) -> Void
-    ) {
-        guard data.count >= 5 else {
-            conn.receive(minimumIncompleteLength: 1, maximumLength: 16389 - data.count) { more, _, _, error in
-                if let error = error {
-                    Self.logger.debug("[\(host)] Error reading more TLS data: \(error.localizedDescription)")
-                    completion(nil)
-                    return
-                }
-                guard let more = more else {
-                    completion(nil)
-                    return
-                }
-                var combined = data
-                combined.append(more)
-                self.ensureFullTLSRecord(data: combined, from: conn, host: host, completion: completion)
-            }
-            return
-        }
-
-        let payloadLen = Int(data.readUInt16(at: 3))
-        let totalLen = 5 + payloadLen
-
-        if data.count >= totalLen {
-            completion(data)
-            return
-        }
-
-        let remaining = totalLen - data.count
-        Self.logger.debug("[\(host)] Need \(remaining) more bytes for TLS record")
-
-        conn.receive(minimumIncompleteLength: remaining, maximumLength: remaining) { more, _, _, error in
-            if let error = error {
-                Self.logger.debug("[\(host)] Error reading TLS payload: \(error.localizedDescription)")
-                completion(nil)
-                return
-            }
-            guard let more = more else {
-                completion(nil)
-                return
-            }
-            var combined = data
-            combined.append(more)
-            completion(combined)
-        }
-    }
-
-    private func processClientHello(
-        data: Data,
+    /// Reads the first flight, writes it desynced (or as-is), then relays. A failed write cancels
+    /// both sides instead of relaying (N7).
+    private func desyncAndRelay(
         clientConn: NWConnection,
         serverConn: NWConnection,
         host: String,
         profile: SpoofProfile,
         completion: @escaping () -> Void
     ) {
-        guard let tlsMsg = TLSMessage.parse(from: data), tlsMsg.isClientHello else {
-            Self.logger.warning("[\(host)] Failed to parse TLS/not ClientHello, forwarding raw")
-            serverConn.send(content: data, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { _ in
-                ConnectionRelay.relay(left: clientConn, right: serverConn, label: host, queue: self.queue) {
-                    serverConn.cancel()
-                    completion()
-                }
-            })
-            return
-        }
-
-        let segments = TLSDesyncer.split(
-            raw: tlsMsg.raw,
-            mode: profile.splitMode,
-            chunkSize: profile.chunkSize,
-            sniOffset: tlsMsg.extractSNIOffset(),
-            tlsRecordFragmentation: profile.tlsRecordFragmentation
-        )
-
-        Self.logger.info("[\(host)] ClientHello \(tlsMsg.raw.count)B → \(segments.count) segments (mode=\(profile.splitMode.rawValue))")
-
-        let extraData: Data? = data.count > tlsMsg.raw.count
-            ? Data(data.dropFirst(tlsMsg.raw.count))
-            : nil
-
-        sendSegments(segments, to: serverConn, index: 0) { [self] in
-            if let extra = extraData {
-                serverConn.send(content: extra, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { _ in
-                    ConnectionRelay.relay(left: clientConn, right: serverConn, label: host, queue: self.queue) {
-                        serverConn.cancel()
-                        completion()
-                    }
-                })
-            } else {
-                ConnectionRelay.relay(left: clientConn, right: serverConn, label: host, queue: self.queue) {
-                    serverConn.cancel()
-                    completion()
-                }
-            }
-        }
-    }
-
-    private func sendSegments(_ segments: [Data], to conn: NWConnection, index: Int, completion: @escaping () -> Void) {
-        guard index < segments.count else {
-            completion()
-            return
-        }
-        conn.send(content: segments[index], contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { [self] error in
-            if let error = error {
-                Self.logger.error("Failed to send segment \(index): \(error.localizedDescription)")
+        let reader = FirstFlightReader(client: clientConn, queue: queue, firstByteTimeout: firstByteTimeout, label: host)
+        reader.read { [self] flight in
+            guard let flight else {
+                serverConn.cancel()
+                clientConn.cancel()
                 completion()
                 return
             }
-            self.sendSegments(segments, to: conn, index: index + 1, completion: completion)
-        })
+            SegmentWriter.writeFirstFlight(flight, profile: profile, to: serverConn, label: host) { [self] error in
+                if let error {
+                    Self.logger.error("[\(host)] First flight send failed: \(error.localizedDescription)")
+                    serverConn.cancel()
+                    clientConn.cancel()
+                    completion()
+                    return
+                }
+                ConnectionRelay.relay(left: clientConn, right: serverConn, label: host, queue: queue,
+                                      firstLeftReceive: reader.inFlightRead) {
+                    serverConn.cancel()
+                    completion()
+                }
+            }
+        }
     }
 
     // MARK: - Helpers

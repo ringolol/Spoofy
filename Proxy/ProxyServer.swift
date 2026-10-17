@@ -18,6 +18,7 @@ final class ProxyServer {
     private let serverQueue: DispatchQueue
     private let resolverCache: DoHResolverCache
     private let dialer: Dialing
+    private let firstByteTimeout: TimeInterval
 
     // serverQueue only
     private var listener: NWListener?
@@ -34,8 +35,10 @@ final class ProxyServer {
     var activeSessionCount: Int { serverQueue.sync { sessions.count } }
 
     init(port: UInt16, settings: AppSettings,
-         resolverCache: DoHResolverCache = DoHResolverCache(), dialer: Dialing = ServerConnector()) {
+         resolverCache: DoHResolverCache = DoHResolverCache(), dialer: Dialing = ServerConnector(),
+         firstByteTimeout: TimeInterval = 2) {
         self.requestedPort = port
+        self.firstByteTimeout = firstByteTimeout
         self.settings = settings
         self.resolverCache = resolverCache
         self.dialer = dialer
@@ -184,7 +187,8 @@ final class ProxyServer {
 
             // SOCKS5 greeting starts with version byte 0x05; HTTP always starts with ASCII letter
             if data[0] == 0x05 {
-                SOCKS5Handler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer)
+                SOCKS5Handler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer,
+                    firstByteTimeout: self.firstByteTimeout)
                     .handleGreeting(clientConn: clientConn, data: data, completion: closeConnection)
                 return
             }
@@ -208,7 +212,8 @@ final class ProxyServer {
             }
 
             if request.isConnect {
-                HTTPSHandler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer)
+                HTTPSHandler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer,
+                    firstByteTimeout: self.firstByteTimeout)
                     .handleRequest(clientConn: clientConn, host: request.host, port: request.port, completion: closeConnection)
             } else {
                 HTTPHandler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer)

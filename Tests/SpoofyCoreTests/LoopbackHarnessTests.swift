@@ -41,7 +41,8 @@ final class LoopbackHarnessTests: XCTestCase {
             guard let resolver else { preconditionFailure("DoH is off, but a resolver was requested for \(url)") }
             return resolver
         }
-        let server = ProxyServer(port: 0, settings: settings, resolverCache: resolverCache)
+        // Short first-byte timer so the server-first tests (U7) don't wait the production 2 s.
+        let server = ProxyServer(port: 0, settings: settings, resolverCache: resolverCache, firstByteTimeout: 0.3)
         let started = expectation(description: "proxy ready")
         let failure = LockedBox<Error?>(nil)
         server.start { error in
@@ -133,9 +134,8 @@ final class LoopbackHarnessTests: XCTestCase {
     func testSNIModeWithRecordFragmentationSendsSeveralRecords() throws {
         let records = try fragmentedRecords(mode: .sni)
         XCTAssertEqual(records.reduce(Data()) { $0 + $1.payload }, Fixtures.tls13ClientHello.dropFirst(5))
-        XCTExpectFailure("U8: SNI mode ignores record fragmentation") {
-            XCTAssertGreaterThan(records.count, 1)
-        }
+        XCTAssertGreaterThan(records.count, 1)
+        XCTAssertTrue(records.allSatisfy { $0.type == 0x16 })
     }
 
     /// Sends the TLS 1.3 hello through a fragmenting proxy and returns the records the origin got.
@@ -183,8 +183,8 @@ final class LoopbackHarnessTests: XCTestCase {
         XCTAssertEqual(try client.read(count: 4), Data("ping".utf8))
     }
 
-    /// The first client read asks for at least 5 bytes (a TLS header), so a protocol whose first
-    /// message is shorter, and that waits for a reply, stalls until the idle timeout.
+    /// N15: the reader decides on the first byte, so a first message shorter than a TLS header
+    /// (and a client that then waits for a reply) is forwarded at once.
     func testShortFirstClientWriteIsForwarded() throws {
         let origin = try startOrigin(.echo)
         let port = try startProxy(splitMode: .sni)
@@ -195,9 +195,7 @@ final class LoopbackHarnessTests: XCTestCase {
                     : try socksTunnel(proxyPort: port, target: .ipv4, originPort: origin.port)
                 try client.send("ping")
                 let got = try? client.read(count: 4, timeout: 1)
-                XCTExpectFailure("N15: the first read waits for 5 bytes") {
-                    XCTAssertEqual(got, Data("ping".utf8), route)
-                }
+                XCTAssertEqual(got, Data("ping".utf8), route)
                 client.close()
             }
         }
@@ -403,24 +401,21 @@ final class LoopbackHarnessTests: XCTestCase {
         let origin = try startOrigin(.serverFirst(banner))
         let port = try startProxy(splitMode: .sni)
         let client = try connectTunnel(proxyPort: port, originPort: origin.port)
-        // The split path waits for a ClientHello before it even dials, so the banner never comes.
-        let got = try? client.read(count: banner.count, timeout: 1)
-        XCTExpectFailure("U7: CONNECT in a split mode has no passthrough for server-first protocols") {
-            XCTAssertEqual(got, banner)
-        }
+        // The client says nothing; after the first-byte timer the tunnel dials and relays as-is.
+        XCTAssertEqual(try client.read(count: banner.count, timeout: 2), banner)
+        // The client read left in flight by the timer carries on into the relay.
+        try client.send("hello")
+        XCTAssertTrue(eventually { origin.received.suffix(5) == Data("hello".utf8) })
     }
 
     func testNonTLSClientFirstBytesPassThroughInSplitMode() throws {
         let origin = try startOrigin(.echo)
         let port = try startProxy(splitMode: .sni)
         let client = try connectTunnel(proxyPort: port, originPort: origin.port)
-        // 0x53 'S' isn't a TLS record type, but the handler parses bytes 3..4 as a record length.
+        // 0x53 'S' isn't a TLS record type, so the bytes go through unmodified.
         let line = Data("SSH-2.0-client\r\n".utf8)
         try client.send(line)
-        let got = try? client.read(count: line.count, timeout: 1)
-        XCTExpectFailure("U7: CONNECT in a split mode treats non-TLS first bytes as a TLS header") {
-            XCTAssertEqual(got, line)
-        }
+        XCTAssertEqual(try client.read(count: line.count, timeout: 1), line)
     }
 
     // MARK: - Scenario 5: connection cap and stop()

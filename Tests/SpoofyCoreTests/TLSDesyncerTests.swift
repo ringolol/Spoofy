@@ -116,11 +116,35 @@ final class TLSDesyncerTests: XCTestCase {
         XCTAssertEqual(TLSDesyncer.splitSNI(raw: raw, start: -1, end: 2), [raw])
     }
 
-    // U8: SNI mode splits `raw` and ignores the fragmented records.
+    // U8: SNI mode used to split `raw` and drop the fragmented records.
     func testSNIModeHonoursRecordFragmentation() throws {
-        XCTExpectFailure("U8: .sni ignores tlsRecordFragmentation")
         let stream = Data(split(Fixtures.tls12ClientHello, .sni, chunk: 64, fragment: true).joined())
         XCTAssertGreaterThan(try records(stream).headers.count, 1)
+    }
+
+    /// Fragmented and SNI-split: the segments are exactly the fragmented records, with every
+    /// hostname byte in a segment of its own, whichever records the hostname straddles.
+    func testSNIModeWithFragmentationIsolatesEveryHostnameByte() throws {
+        for raw in hellos {
+            let sni = try XCTUnwrap(sniOffset(raw))
+            // Chunk sizes that put record boundaries before, inside and after the hostname.
+            for chunk in [1, 3, 7, sni.start - 3, 64, 5000] {
+                let segments = split(raw, .sni, chunk: chunk, fragment: true)
+                let fragmented = Data(TLSDesyncer.splitTLSRecords(raw: raw, size: chunk).joined())
+                XCTAssertEqual(Data(segments.joined()), fragmented, "chunk \(chunk)")
+                XCTAssertFalse(segments.contains { $0.isEmpty }, "chunk \(chunk)")
+                var cuts = boundaries(segments)
+                cuts.formUnion([0, fragmented.count])
+                for i in sni.start..<sni.end {
+                    // Where original byte i lands in the fragmented stream: each earlier record adds a header.
+                    let payloadIndex = i - 5
+                    let position = (payloadIndex / chunk) * (chunk + 5) + 5 + payloadIndex % chunk
+                    XCTAssertEqual(fragmented[position], raw[i])
+                    XCTAssertTrue(cuts.contains(position) && cuts.contains(position + 1),
+                                  "chunk \(chunk): hostname byte \(i) shares a segment")
+                }
+            }
+        }
     }
 
     // MARK: - Mask splitting

@@ -24,6 +24,8 @@ final class ConnectionRelay {
 
     /// Start bidirectional relay between two connections.
     /// Calls completion when both directions finish or idle timeout is reached.
+    /// `firstLeftReceive`, when set, replaces the first `left.receive` (a read already in flight,
+    /// see `FirstFlightReader.inFlightRead`).
     static func relay(
         left: any ConnectionProtocol,
         right: any ConnectionProtocol,
@@ -31,6 +33,7 @@ final class ConnectionRelay {
         queue: DispatchQueue,
         idleTimeout: Double = idleTimeoutSeconds,
         idleCheckInterval: DispatchTimeInterval = .seconds(idleCheckIntervalSeconds),
+        firstLeftReceive: ((@escaping ReceiveHandler) -> Void)? = nil,
         completion: @escaping () -> Void
     ) {
         logger.debug("Relay started \(label)")
@@ -68,7 +71,7 @@ final class ConnectionRelay {
         }
 
         group.enter()
-        pipe(from: left, to: right, label: "\(label) client→server", activity: activity) {
+        pipe(from: left, to: right, label: "\(label) client→server", activity: activity, firstReceive: firstLeftReceive) {
             group.leave()
         }
 
@@ -88,9 +91,13 @@ final class ConnectionRelay {
         to dest: any ConnectionProtocol,
         label: String,
         activity: LastActivity,
+        firstReceive: ((@escaping ReceiveHandler) -> Void)? = nil,
         completion: @escaping () -> Void
     ) {
-        source.receive(minimumIncompleteLength: 1, maximumLength: bufferSize) { content, _, isComplete, error in
+        let receive: (@escaping ReceiveHandler) -> Void = firstReceive ?? { handler in
+            source.receive(minimumIncompleteLength: 1, maximumLength: bufferSize, completion: handler)
+        }
+        receive { content, _, isComplete, error in
             if let error = error {
                 logger.debug("\(label) read error: \(error.localizedDescription)")
         

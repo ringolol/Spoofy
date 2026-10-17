@@ -11,6 +11,7 @@
 		3FEFF257708CE9D7C1472D22 /* ConnectionRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0006 /* ConnectionRelay.swift */; };
 		449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0003 /* HTTPParser.swift */; };
 		4BA56F99DB92ECEC3FD52A81 /* TLSDesyncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0008 /* TLSDesyncer.swift */; };
+		4C0000000000000000000005 /* ClientHelloReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0000000000000000000006 /* ClientHelloReader.swift */; };
 		60DABCCCD7228765947F380D /* DoHResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000A /* DoHResolver.swift */; };
 		6C8525E6C3C24B6F0EBDEFD3 /* PatternMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0009 /* PatternMask.swift */; };
 		7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */; };
@@ -31,6 +32,8 @@
 		FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0002 /* ProxyServer.swift */; };
 		5E5510000000000000000001 /* SessionScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5510000000000000000002 /* SessionScope.swift */; };
 		5E5520000000000000000001 /* ServerConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5520000000000000000002 /* ServerConnector.swift */; };
+		4C0000000000000000000003 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0000000000000000000004 /* SegmentWriter.swift */; };
+		4C0000000000000000000001 /* FirstFlightReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0000000000000000000002 /* FirstFlightReader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,12 +49,15 @@
 		AA00000200000001AABB0002 /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
 		5E5510000000000000000002 /* SessionScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionScope.swift; sourceTree = "<group>"; };
 		5E5520000000000000000002 /* ServerConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConnector.swift; sourceTree = "<group>"; };
+		4C0000000000000000000004 /* SegmentWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentWriter.swift; sourceTree = "<group>"; };
+		4C0000000000000000000002 /* FirstFlightReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstFlightReader.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0003 /* HTTPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPParser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0004 /* HTTPHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPHandler.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0005 /* HTTPSHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPSHandler.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0006 /* ConnectionRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRelay.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0007 /* TLSParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSParser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0008 /* TLSDesyncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSDesyncer.swift; sourceTree = "<group>"; };
+		4C0000000000000000000006 /* ClientHelloReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientHelloReader.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0009 /* PatternMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatternMask.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000A /* DoHResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoHResolver.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000B /* DNSCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSCache.swift; sourceTree = "<group>"; };
@@ -126,6 +132,8 @@
 				AA00000200000001AABB0002 /* ProxyServer.swift */,
 				5E5510000000000000000002 /* SessionScope.swift */,
 				5E5520000000000000000002 /* ServerConnector.swift */,
+				4C0000000000000000000004 /* SegmentWriter.swift */,
+				4C0000000000000000000002 /* FirstFlightReader.swift */,
 				AA00000200000001AABB0003 /* HTTPParser.swift */,
 				AA00000200000001AABB0004 /* HTTPHandler.swift */,
 				AA00000200000001AABB0005 /* HTTPSHandler.swift */,
@@ -139,6 +147,7 @@
 			children = (
 				AA00000200000001AABB0007 /* TLSParser.swift */,
 				AA00000200000001AABB0008 /* TLSDesyncer.swift */,
+				4C0000000000000000000006 /* ClientHelloReader.swift */,
 				AA00000200000001AABB0009 /* PatternMask.swift */,
 			);
 			path = TLS;
@@ -250,12 +259,15 @@
 				FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */,
 				5E5510000000000000000001 /* SessionScope.swift in Sources */,
 				5E5520000000000000000001 /* ServerConnector.swift in Sources */,
+				4C0000000000000000000003 /* SegmentWriter.swift in Sources */,
+				4C0000000000000000000001 /* FirstFlightReader.swift in Sources */,
 				449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */,
 				CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */,
 				9542604D3D1E3F43F900321B /* HTTPSHandler.swift in Sources */,
 				3FEFF257708CE9D7C1472D22 /* ConnectionRelay.swift in Sources */,
 				BE8C26D69618E16F5A2EBA03 /* TLSParser.swift in Sources */,
 				4BA56F99DB92ECEC3FD52A81 /* TLSDesyncer.swift in Sources */,
+				4C0000000000000000000005 /* ClientHelloReader.swift in Sources */,
 				6C8525E6C3C24B6F0EBDEFD3 /* PatternMask.swift in Sources */,
 				60DABCCCD7228765947F380D /* DoHResolver.swift in Sources */,
 				09FFCA969FA6759926E5ADD6 /* DNSCache.swift in Sources */,

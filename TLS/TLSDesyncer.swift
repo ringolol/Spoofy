@@ -19,10 +19,8 @@ struct TLSDesyncer {
         // Step 2: Apply the chosen split mode to each piece.
         switch mode {
         case .sni:
-            if let offset = sniOffset {
-                return splitSNI(raw: raw, start: offset.start, end: offset.end)
-            }
-            return [raw]
+            guard let offset = sniOffset else { return inputs }
+            return splitSNI(records: inputs, start: offset.start, end: offset.end)
 
         case .random:
             let mask = genPatternMask()
@@ -95,6 +93,27 @@ struct TLSDesyncer {
             segments.append(raw.subdata(in: end..<raw.count))
         }
 
+        return segments
+    }
+
+    /// SNI split over the output of `splitTLSRecords` (U8). `start`/`end` are offsets into the
+    /// original record; each record gets the part of the hostname it carries, in its own
+    /// coordinates. A single unfragmented record is the plain `splitSNI` case.
+    static func splitSNI(records: [Data], start: Int, end: Int) -> [Data] {
+        var segments: [Data] = []
+        // Original offset of each record's first payload byte, minus its 5-byte header:
+        // original index - shift = index within this record.
+        var shift = 0
+        for record in records {
+            let localStart = max(start - shift, 5)
+            let localEnd = min(end - shift, record.count)
+            if localStart < localEnd {
+                segments += splitSNI(raw: record, start: localStart, end: localEnd)
+            } else {
+                segments.append(record)
+            }
+            shift += record.count - 5
+        }
         return segments
     }
 

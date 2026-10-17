@@ -63,8 +63,6 @@ Each finding has an ID that later phases refer to.
 | U4 | `AppSettings.swift:186` (`profiles` getter) | When decoding fails, it **overwrites stored profiles with defaults**. A bad migration or partial write therefore loses the user's config. It also decodes JSON on every access, including once per connection. | Decode once into the store. On failure, keep the raw blob under `profiles.backup.<timestamp>`, fall back to defaults in memory only, and surface the error in the UI. |
 | U5 | `AppSettings.swift:257-265` (`importJSON`) | No validation: duplicate IDs, a missing or duplicate Master, bad chunk sizes and unknown modes are all accepted. | `ProfileValidator` returns `[ValidationError]`. Import only succeeds when the list is empty, and it never replaces Master's identity. |
 | U6 | `HTTPSHandler.swift:44`, `HTTPHandler.swift:32`, `SOCKS5Handler.swift:254` | Route = VPN with `outlineConfig == nil` **falls through to a direct connection**. A user who expects tunnelling gets a direct, DPI-visible connection. | Fail closed: HTTP 502 or SOCKS5 reply `0x01`, plus a log line. The router (§6.5) makes this a single decision point. |
-| U7 | `HTTPSHandler.swift:143-192` (`ensureFullTLSRecord`) | There is no `0x16` content-type check. A non-TLS protocol over CONNECT (for example SSH over port 443, or a server-first protocol) waits for a "record length" read from arbitrary bytes, or for data that never comes, until the idle timeout. SOCKS5 has the check (`SOCKS5Handler.swift:343`); HTTPS does not. | Use one `ClientHelloReader` (§6.3) for both: if the first byte isn't `0x16`, pass through. Add a 2-second first-byte timeout so server-first protocols get passthrough (the bytes are forwarded unmodified). |
-| U8 | `TLS/TLSDesyncer.swift:21-25` | `.sni` mode splits `raw` instead of `inputs`, so **TLS record fragmentation is silently ignored** in SNI mode. Every other mode honours it. | Split each fragmented record at the SNI offset translated into that record's coordinates. Test: `split(.sni, recordFragmentation: true)` yields more than one TLS record header. |
 | U9 | `Spoofy/ProxyManager.swift:40-44` | When the proxy fails to start, the silent audio player keeps running. The app then sits in the background draining battery for nothing. | Stop the audio in the error path. Make `ProxyManager` a small state machine: `idle → starting → running(port) → stopping → idle`, plus `failed(error)`. |
 | U10 | `ProxyServer.swift:46` | The `start` completion is called on **every** listener state change. That includes `.ready` after a network change and `.failed` later on, so `ProxyManager` flips state. | Call the completion once, on the first `.ready` or `.failed`. Report later failures through a separate `onFailure` handler. |
 | U11 | `Spoofy/BackgroundAudioPlayer.swift` | No `AVAudioSession.interruptionNotification` or `mediaServicesWereResetNotification` handling. After a phone call or Siri, the audio stays stopped and iOS suspends the proxy. | Observe both notifications. Resume on `.ended` (ignore `shouldResume`, because the session is silent), and rebuild the player after a media-services reset. |
@@ -80,7 +78,6 @@ Each finding has an ID that later phases refer to.
 | N4 | `ShadowsocksStream` (send path) | The address header goes out only with the first **client** data. Server-first protocols (SMTP, some game and chat protocols) therefore hang over VPN, because the server never learns the target. | Use outline-sdk's `ClientDataWait` behaviour: wait up to 10 ms for the first client data and coalesce, then flush the header alone. |
 | N5 | `ShadowsocksStream` salt generation | The `SecRandomCopyBytes` status is ignored. On failure, the salt is all zeros, so nonces are reused across connections. | Check the status and fail the connection on error. Alternatively, `SystemRandomNumberGenerator` fills the salt, and it cannot fail. |
 | N6 | `SOCKS5Handler.processGreeting` / `parseAddress` | Bytes after the greeting or request in the same read are dropped. A client that pipelines (greeting + request, or request + ClientHello) breaks. Short reads are also not handled. | Use an incremental parser with a leftover buffer (§6.4.2). |
-| N7 | `HTTPSHandler.swift:276`, `SOCKS5Handler.swift:473` (`sendSegments`) | A send error is logged, and then the relay **still starts**. | On error, cancel both sides and don't relay. |
 | N8 | All handshakes | No timeout before the relay starts. A client that opens a socket and sends nothing (or one byte) holds a slot forever, out of only 200 slots. | Use a session-level handshake deadline: 10 s from accept until the relay starts. |
 | N9 | `ProxyServer.readRequest`, `HTTPHandler` | A single `receive(≤8192)` is assumed to hold the whole request head. Long cookies or a split read cause a 400. A plain-HTTP keep-alive connection that then asks for a **different host** is forwarded to the first host. | Use an incremental head parser up to 64 KB (§6.4.1). Rewrite the absolute-form request to origin-form, strip `Proxy-*` headers, and force `Connection: close` upstream, so there is one request per upstream connection. |
 | N10 | `DoHResolver` | Queries A records only, so IPv6-only hosts fail. It sends DoH queries for IP literals. Callers use only `ips.first`, so a single dead IP fails the connection. | Skip DoH for IP literals. Query A and AAAA in parallel. Return all addresses; the `Dialer` tries them in order with a 250 ms stagger (SpoofDPI `DialFastest`). |
@@ -88,7 +85,6 @@ Each finding has an ID that later phases refer to.
 | N12 | `ConnectionRelay.pipe` | EOF on one side cancels the other immediately, so there is no half-close. This matches SpoofDPI but breaks request/response protocols that half-close (rare over 443). | **Keep the current behaviour** in the refactor, behind a `RelayPolicy.closeOnFirstEOF` default. Note half-close as a possible follow-up. Don't change two things at once. |
 | N13 | `OutlineAccessKey.urlDecodeBytes` | Found in Phase 2. The `prefix=` value is percent-decoded into raw bytes. outline-sdk (`configurl.parseStringPrefix`) instead percent-decodes it into a UTF-8 **string** and maps each code point ≤ 0xFF to one byte. So `%C2%A8` must become the single byte `0xA8`, but Spoofy produces `c2 a8`. Every prefix with a byte ≥ 0x80 is wrong, including the TLS-ClientHello prefix from Outline's prefixing guide (`%16%03%01%00%C2%A8%01%01`). | Percent-decode, UTF-8-decode, then map each scalar to a byte. Reject scalars above 0xFF, as outline-sdk does. Test: `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes`. |
 | N14 | `ConnectionRelay.pipe` (send error path) | Found in Phase 2. On a write error the pipe cancels only its **source**. The opposite pipe stays parked in `receive` on the destination, so the relay doesn't complete and the slot stays held until the 120-second idle timeout. A failed `NWConnection` usually also fails its pending receive, which hides this. A `ShadowsocksStream` destination doesn't. | Cancel both sides on a write error, as the read-error path already does. Test: `ConnectionRelayTests.testWriteErrorStopsTheRelay`. |
-| N15 | `HTTPSHandler.readClientHello`, `SOCKS5Handler.readClientHello` | Found in Phase 3. The first client read uses `minimumIncompleteLength: 5`, so a client whose first write is under 5 bytes and then waits for a reply (a short line-based protocol, a 1-byte keepalive) stalls until the idle timeout. SOCKS5's `0x16` check runs only after those 5 bytes arrive. | `ClientHelloReader` (§6.3) decides on the first byte, so reads use `minimumIncompleteLength: 1`. Test: `LoopbackHarnessTests.testShortFirstClientWriteIsForwarded`. |
 
 ### 2.4 Minor (P3)
 
@@ -107,7 +103,7 @@ Each finding has an ID that later phases refer to.
 | SpoofDPI | Spoofy | Action |
 |----------|--------|--------|
 | `int(seed)` wraps silently | `Int(seed)` traps | C1 |
-| `ReadTLSMessage` aborts if the first message isn't a ClientHello | HTTPS path has no check | U7 |
+| `ReadTLSMessage` aborts if the first message isn't a ClientHello | HTTPS path has no check (fixed in 4c: passthrough) | U7 |
 | Domain trie: label-aware, priority exact > `*` > `**` | substring `contains` | U3. Port the semantics and the `trie/domain_test.go` cases. |
 | `DialFastest`: races resolved IPs | `ips.first` | N10 |
 | `custom` split mode (`applySegmentPlans`): offsets relative to the SNI, with noise | not present | Out of scope. The new `Desyncer` interface (§6.5) makes it a drop-in later. |
@@ -187,13 +183,9 @@ Expected-failure ledger. Each item flips to a passing test when its fix lands; r
 | U3 | `DomainMatcherTests.testBothWildcardsAreLabelAware` | `XCTExpectFailure` |
 | U4 | `SettingsStoreTests.testCorruptedProfilesBlobIsPreserved` | `XCTExpectFailure` |
 | U5 | `SettingsStoreTests.testImportRejectsMissingMaster`, `testImportRejectsDuplicateIDs` | `XCTExpectFailure` |
-| U8 | `TLSDesyncerTests.testSNIModeHonoursRecordFragmentation` | `XCTExpectFailure` |
 | N2 | `OutlineAccessKeyTests.testPrefixLongerThanSaltIsRejected` | `XCTExpectFailure` |
 | N13 | `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes` | `XCTExpectFailure` |
-| U7 | `LoopbackHarnessTests.testServerFirstBannerReachesClientInSplitMode`, `testNonTLSClientFirstBytesPassThroughInSplitMode` | `XCTExpectFailure` |
-| U8 | `LoopbackHarnessTests.testSNIModeWithRecordFragmentationSendsSeveralRecords` (end-to-end twin of the unit test) | `XCTExpectFailure` |
 | N9 | `LoopbackHarnessTests.testPlainHTTPIsRewrittenToOriginForm` | `XCTExpectFailure` |
-| N15 | `LoopbackHarnessTests.testShortFirstClientWriteIsForwarded` | `XCTExpectFailure` |
 | M4 | `SettingsStoreTests.testOutOfRangePortFallsBack` | `XCTSkipIf`, because it traps |
 | M5 | `TLSParserTests.testParsesFromDataSlice` | `XCTSkipIf`, because it traps |
 
@@ -211,7 +203,7 @@ These items need the seams from later phases, so they are deferred:
 - For every mode, `segments.joined() == input`: the invariant that matters most.
 - `.firstByte`: first segment has 1 byte. `.chunk(n)`: every segment has ≤ n bytes. `.sni`: some segment boundary falls strictly inside the hostname.
 - Record fragmentation: each output record has a valid 5-byte header. Concatenating the record payloads equals the original payload.
-- U8 (expected failure until fixed): `.sni` + record fragmentation produces more than one record.
+- U8 (fixed in 4c): `.sni` + record fragmentation produces more than one record, and every hostname byte is its own segment wherever the record boundaries fall.
 
 **`PatternMaskTests`**
 - Inject a seeded RNG returning `UInt64.max` (C1 regression: must not trap).
@@ -312,7 +304,7 @@ Test ──NWConnection──▶ ProxyServer(127.0.0.1:0) ──▶ LoopbackOrig
 - Scenario 1: every split mode delivers the TLS 1.3 hello plus trailing data byte-exact; with record fragmentation the records re-assemble to the original handshake for chunk, firstByte and random (SNI is U8). Echo round-trip, 400 for garbage, refused dial (N11).
 - Scenario 2: SOCKS5 echo for domain (`localhost`), IPv4 and IPv6 targets; the hello is delivered unchanged; `0x07` for BIND; `0xFF` with no acceptable method. The client waits for the method reply before sending the request (N6 is a §5.2 fake-connection test).
 - Scenario 3: the absolute-form request reaches the origin and the response comes back; the origin-form rewrite is N9 (expected failure).
-- Scenario 4: the banner arrives in mode `none`; in split modes it doesn't, and non-TLS first bytes stall (U7). A first write under 5 bytes stalls in both CONNECT and SOCKS5 (N15).
+- Scenario 4: the banner arrives in mode `none`; in split modes it doesn't, and non-TLS first bytes stall (U7). A first write under 5 bytes stalls in both CONNECT and SOCKS5 (N15). All of these pass since 4c.
 - Scenario 5 landed with 4a: `testConnectionCapAdmitsExactly200` (250 clients, exactly 50 refused, freed slots re-admit), `testStopClosesSessionsInEveryPhase` (relaying, idle and mid-SOCKS5 sessions all close, and so does the upstream), `testSessionSlotIsReleasedWhenClientCloses`. Scenario 6 (Shadowsocks interop) comes with 4f.
 
 ## 6. Phase 4 — refactor design
@@ -431,6 +423,19 @@ done: feed() is a programming error (assertionFailure, then .passthrough(chunk))
 The session adds a **first-byte timer** (2 s) while in `awaitingHeader` with an empty buffer. When it fires, the session starts relaying without desync, which covers server-first protocols over CONNECT. The overall handshake deadline (N8, 10 s) covers `awaitingBody`.
 
 Scope note: a ClientHello split across several TLS records (very large post-quantum key shares) is passed through after the first record. That is a known limitation; today's code has the same one.
+
+**Step 4c status: done.**
+- `TLS/ClientHelloReader.swift`: the state machine above, plus the `FirstFlight` enum from §6.5 (`empty`, `raw`, `clientHello(record:sniOffset:leftover:)`). Pure, with `ClientHelloReaderTests`.
+- `Proxy/FirstFlightReader.swift` drives it from the client connection with 1-byte-minimum reads (N15) and the first-byte timer. A receive can't be withdrawn, so when the timer fires one client read is still outstanding; `inFlightRead` hands it to the relay through the new `ConnectionRelay.relay(firstLeftReceive:)` parameter, so nothing is lost or reordered. Tested with `FakeConnection` (`FirstFlightReaderTests`), whichever of data and relay arrives first.
+- `Proxy/SegmentWriter.swift`: `write(segments, to:)` stops at the first send error and reports it (N7); `writeFirstFlight` does the desync split and appends the leftover. Both handlers cancel both sides on an error instead of relaying.
+- Both `ensureFullTLSRecord`s, `processClientHello`s, `sendSegments`s and HTTPS's `connectAndForward` are gone. CONNECT reads the first flight, then dials (as before); SOCKS5 still dials before its reply, then reads.
+- U8: `TLSDesyncer.splitSNI(records:start:end:)` translates the SNI range into each fragmented record's coordinates; without an SNI offset, fragmentation is still applied.
+- `ProxyServer(firstByteTimeout:)` defaults to 2 s; the harness uses 0.3 s.
+- **Deviations:**
+  - `FirstFlight.none` is named `.empty`: `case .none` on a `FirstFlight?` silently matches `Optional.none` (a test hit it).
+  - `maxRecord` is 16 384 (the TLSPlaintext limit, and what `TLSMessage.parse` accepts), not 16 384 + 256.
+  - EOF before the record is complete closes the session rather than forwarding the partial bytes (`finishOnEOF` exists, unused); same as before.
+  - The N8 handshake deadline (10 s over `awaitingBody`) is not here; it comes with the session object in 4d.
 
 ### 6.4 Inbound handshakes
 
@@ -639,7 +644,7 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 3 | Loopback harness (§5.3). `ProxyServer` exposes its port; config injected (resolver with 4b). **Done**: see the §5.3 status | Scenarios 1–4 green against the **current** handlers |
 | 4a | Serial session queues (§6.1), M1, M2, N14. **Done**: see the §6.1 status | All tests green |
 | 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11. **Done**: see the §6.2 status | Green; network-scanner §1 is unblocked |
-| 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15 | Expected-failures for U7, N7, U8 and N15 removed |
+| 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15. **Done**: see the §6.3 status | Expected-failures for U7, N7, U8 and N15 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7 | §5.2 session tests and harness scenarios 1–5 green |
 | 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, M4, M6 | Characterization tests decide U3 semantics |
 | 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b) | Codec KATs and opt-in interop scenario 6 green |
