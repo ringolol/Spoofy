@@ -88,6 +88,7 @@ Each finding has an ID that later phases refer to.
 | N12 | `ConnectionRelay.pipe` | EOF on one side cancels the other immediately, so there is no half-close. This matches SpoofDPI but breaks request/response protocols that half-close (rare over 443). | **Keep the current behaviour** in the refactor, behind a `RelayPolicy.closeOnFirstEOF` default. Note half-close as a possible follow-up. Don't change two things at once. |
 | N13 | `OutlineAccessKey.urlDecodeBytes` | Found in Phase 2. The `prefix=` value is percent-decoded into raw bytes. outline-sdk (`configurl.parseStringPrefix`) instead percent-decodes it into a UTF-8 **string** and maps each code point ≤ 0xFF to one byte. So `%C2%A8` must become the single byte `0xA8`, but Spoofy produces `c2 a8`. Every prefix with a byte ≥ 0x80 is wrong, including the TLS-ClientHello prefix from Outline's prefixing guide (`%16%03%01%00%C2%A8%01%01`). | Percent-decode, UTF-8-decode, then map each scalar to a byte. Reject scalars above 0xFF, as outline-sdk does. Test: `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes`. |
 | N14 | `ConnectionRelay.pipe` (send error path) | Found in Phase 2. On a write error the pipe cancels only its **source**. The opposite pipe stays parked in `receive` on the destination, so the relay doesn't complete and the slot stays held until the 120-second idle timeout. A failed `NWConnection` usually also fails its pending receive, which hides this. A `ShadowsocksStream` destination doesn't. | Cancel both sides on a write error, as the read-error path already does. Test: `ConnectionRelayTests.testWriteErrorStopsTheRelay`. |
+| N15 | `HTTPSHandler.readClientHello`, `SOCKS5Handler.readClientHello` | Found in Phase 3. The first client read uses `minimumIncompleteLength: 5`, so a client whose first write is under 5 bytes and then waits for a reply (a short line-based protocol, a 1-byte keepalive) stalls until the idle timeout. SOCKS5's `0x16` check runs only after those 5 bytes arrive. | `ClientHelloReader` (§6.3) decides on the first byte, so reads use `minimumIncompleteLength: 1`. Test: `LoopbackHarnessTests.testShortFirstClientWriteIsForwarded`. |
 
 ### 2.4 Minor (P3)
 
@@ -190,6 +191,11 @@ Expected-failure ledger. Each item flips to a passing test when its fix lands; r
 | N2 | `OutlineAccessKeyTests.testPrefixLongerThanSaltIsRejected` | `XCTExpectFailure` |
 | N13 | `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes` | `XCTExpectFailure` |
 | N14 | `ConnectionRelayTests.testWriteErrorStopsTheRelay` | `XCTExpectFailure` |
+| U7 | `LoopbackHarnessTests.testServerFirstBannerReachesClientInSplitMode`, `testNonTLSClientFirstBytesPassThroughInSplitMode` | `XCTExpectFailure` |
+| U8 | `LoopbackHarnessTests.testSNIModeWithRecordFragmentationSendsSeveralRecords` (end-to-end twin of the unit test) | `XCTExpectFailure` |
+| N9 | `LoopbackHarnessTests.testPlainHTTPIsRewrittenToOriginForm` | `XCTExpectFailure` |
+| N11 | `LoopbackHarnessTests.testConnectToClosedPortClosesClient` | `XCTExpectFailure` |
+| N15 | `LoopbackHarnessTests.testShortFirstClientWriteIsForwarded` | `XCTExpectFailure` |
 | M4 | `SettingsStoreTests.testOutOfRangePortFallsBack` | `XCTSkipIf`, because it traps |
 | M5 | `TLSParserTests.testParsesFromDataSlice` | `XCTSkipIf`, because it traps |
 
@@ -301,6 +307,16 @@ Test ──NWConnection──▶ ProxyServer(127.0.0.1:0) ──▶ LoopbackOrig
   5. 250 concurrent idle clients → the 201st is refused; `stop()` closes all of them (M1, M2).
   6. **Opt-in Shadowsocks interop.** Gated on `SPOOFY_SS_TEST_KEY`, against `docker-compose up` (outline shadowbox, port 8082): VPN route to a loopback origin, echo round-trip; plus a server-first origin (N4).
 - Every test has a hard 5-second timeout, and fails with the session log attached.
+
+**Phase 3 status: done** (`Tests/SpoofyCoreTests/LoopbackHarnessTests.swift`, 17 tests, about 6 s).
+- Seam: `ProxyServer.port` returns the bound port, so tests start it with port 0. Config is injected via `AppSettings(defaults:)` with a throwaway suite, as in Phase 2.
+- **Resolver and `Dialer` injection deferred to 4b.** The current handlers construct `DoHResolver` and `NWConnection` inline, and there is no seam short of the §6.2 `Dialer`. The harness doesn't need one: DoH is off, and targets are `127.0.0.1`, `::1` and `localhost`, which the system resolver answers locally. `FakeResolver` arrives with the `Dialer` and is needed only for DoH-path scenarios.
+- Support: `LoopbackOrigin` (listener bound to the loopback interface, v4 and v6, with `.echo`, `.recordAll`, `.serverFirst`; it records every byte) and `TestClient` (blocking reads with deadlines: `read(count:)`, `read(through:)`, `waitForClose`). Each wait is at most 5 s; the session log isn't attached yet (os.log only), which is worth adding with the §6.1 session object.
+- Scenario 1: every split mode delivers the TLS 1.3 hello plus trailing data byte-exact; with record fragmentation the records re-assemble to the original handshake for chunk, firstByte and random (SNI is U8). Echo round-trip, 400 for garbage, refused dial (N11).
+- Scenario 2: SOCKS5 echo for domain (`localhost`), IPv4 and IPv6 targets; the hello is delivered unchanged; `0x07` for BIND; `0xFF` with no acceptable method. The client waits for the method reply before sending the request (N6 is a §5.2 fake-connection test).
+- Scenario 3: the absolute-form request reaches the origin and the response comes back; the origin-form rewrite is N9 (expected failure).
+- Scenario 4: the banner arrives in mode `none`; in split modes it doesn't, and non-TLS first bytes stall (U7). A first write under 5 bytes stalls in both CONNECT and SOCKS5 (N15).
+- Scenarios 5 (connection cap, `stop()`) and 6 (Shadowsocks interop) are written with 4a and 4f respectively, since both depend on those changes.
 
 ## 6. Phase 4 — refactor design
 
@@ -604,10 +620,10 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 0 | Hotfixes C1–C3, U1, U6, U9, U10 → release v1.5.9 | Manual check; throwaway script for C1 |
 | 1 | Root `Package.swift` (`SpoofyCore` + `SpoofyCoreTests`) and `make test` = `swift test` | Smoke KAT passes on macOS; the Xcode app build is unchanged |
 | 2 | §5.1 unit tests (with expected failures for open bugs) and `FakeConnection` relay tests. **Done**: see the §5.1 status | Green |
-| 3 | Loopback harness (§5.3). `ProxyServer` exposes its port; resolver and config injected | Scenarios 1–4 green against the **current** handlers |
+| 3 | Loopback harness (§5.3). `ProxyServer` exposes its port; config injected (resolver with 4b). **Done**: see the §5.3 status | Scenarios 1–4 green against the **current** handlers |
 | 4a | Serial session queues (§6.1), M1, M2, N14 | All tests green |
-| 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers; N10, N11 | Green; network-scanner §1 is unblocked |
-| 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8 | Expected-failures for U7, N7 and U8 removed |
+| 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11 | Green; network-scanner §1 is unblocked |
+| 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15 | Expected-failures for U7, N7, U8 and N15 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7 | §5.2 session tests and harness scenarios 1–5 green |
 | 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, M4, M6 | Characterization tests decide U3 semantics |
 | 4f | Shadowsocks codec extraction, N1–N5 and N13 | Codec KATs and opt-in interop scenario 6 green |

@@ -7,7 +7,7 @@ final class ProxyServer {
     private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "ProxyServer")
     private static let maxConcurrentConnections = 200
 
-    private let port: UInt16
+    private let requestedPort: UInt16
     private let settings: AppSettings
     private var listener: NWListener?
     private let httpHandler: HTTPHandler
@@ -20,8 +20,11 @@ final class ProxyServer {
     /// Called if the listener fails after `start` has already reported its result.
     var onFailure: ((Error) -> Void)?
 
+    /// The bound port once the listener is ready. Differs from the requested port when that was 0 (ephemeral).
+    var port: UInt16? { listener?.port?.rawValue }
+
     init(port: UInt16, settings: AppSettings) {
-        self.port = port
+        self.requestedPort = port
         self.settings = settings
         self.httpHandler = HTTPHandler(queue: proxyQueue, settings: settings, resolverCache: resolverCache)
         self.httpsHandler = HTTPSHandler(queue: proxyQueue, settings: settings, resolverCache: resolverCache)
@@ -38,7 +41,7 @@ final class ProxyServer {
         let bindAddress: NWEndpoint.Host = settings.allowLANAccess ? .ipv4(.any) : .ipv4(.loopback)
         params.requiredLocalEndpoint = NWEndpoint.hostPort(
             host: bindAddress,
-            port: NWEndpoint.Port(rawValue: port)!
+            port: NWEndpoint.Port(rawValue: requestedPort)!
         )
 
         do {
@@ -55,7 +58,7 @@ final class ProxyServer {
                 // .ready can repeat (e.g. after .waiting on a network change); report it once.
                 guard startReported.setIfFalse() else { return }
                 let addr = self.settings.allowLANAccess ? "0.0.0.0" : "127.0.0.1"
-                Self.logger.info("Proxy listening on \(addr):\(self.port)")
+                Self.logger.info("Proxy listening on \(addr):\(self.port ?? self.requestedPort)")
                 completion(nil)
             case .failed(let error):
                 Self.logger.error("Listener failed: \(error.localizedDescription)")
