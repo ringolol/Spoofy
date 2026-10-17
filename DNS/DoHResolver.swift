@@ -3,90 +3,112 @@ import os.log
 
 /// DNS-over-HTTPS resolver. Builds a DNS wire-format query, sends it via GET to a DoH endpoint,
 /// and parses A/AAAA records from the response.
-final class DoHResolver {
+final class DoHResolver: Resolver {
     private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "DoH")
 
+    /// Fetches a URL and calls back with the body of a 200 response, or nil. Injectable for tests.
+    typealias Transport = (URLRequest, @escaping (Data?) -> Void) -> Void
+
     private let serverURL: String
-    private let session: URLSession
+    private let transport: Transport
     private let cache: DNSCache
 
-    init(serverURL: String) {
-        self.serverURL = serverURL.hasPrefix("https://") ? serverURL : "https://\(serverURL)/dns-query"
+    convenience init(serverURL: String) {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 5
         config.timeoutIntervalForResource = 5
         config.connectionProxyDictionary = [:] // Bypass tunnel proxy to avoid circular dependency
-        self.session = URLSession(configuration: config)
-        self.cache = DNSCache()
+        let session = URLSession(configuration: config)
+        self.init(serverURL: serverURL) { request, completion in
+            session.dataTask(with: request) { data, response, error in
+                if let error {
+                    Self.logger.error("DoH request failed: \(error.localizedDescription)")
+                    return completion(nil)
+                }
+                guard (response as? HTTPURLResponse)?.statusCode == 200, let data else {
+                    Self.logger.error("DoH bad response")
+                    return completion(nil)
+                }
+                completion(data)
+            }.resume()
+        }
     }
 
-    /// Resolve a domain to IP addresses. Returns cached results when available.
+    init(serverURL: String, cache: DNSCache = DNSCache(), transport: @escaping Transport) {
+        self.serverURL = serverURL.hasPrefix("https://") ? serverURL : "https://\(serverURL)/dns-query"
+        self.transport = transport
+        self.cache = cache
+    }
+
+    /// Resolve a domain to IP addresses (A then AAAA). Returns cached results when available.
     /// `completion` always runs asynchronously on `queue` (the caller's session queue).
     func resolve(domain: String, on queue: DispatchQueue, completion: @escaping ([String]?) -> Void) {
+        // N10: an IP literal (bracketed IPv6 too) is its own answer; never query for it.
+        let bare = domain.hasPrefix("[") && domain.hasSuffix("]") ? String(domain.dropFirst().dropLast()) : domain
+        if ServerConnector.isIPLiteral(bare) {
+            queue.async { completion([bare]) }
+            return
+        }
         resolve(domain: domain) { ips in
             queue.async { completion(ips) }
         }
     }
 
-    /// Calls `completion` on the caller's thread for a cache hit, otherwise on a URLSession queue.
+    /// Calls `completion` on the caller's thread for a cache hit, otherwise on a transport queue.
     private func resolve(domain: String, completion: @escaping ([String]?) -> Void) {
-        // Check cache first
         if let cached = cache.get(domain: domain) {
             completion(cached)
             return
         }
 
-        // Build DNS query for A record
-        guard let query = buildDNSQuery(domain: domain, qtype: 1) else { // A record
-            Self.logger.error("Invalid domain name for DNS query: \(domain)")
+        // N10: query A and AAAA in parallel, so IPv6-only hosts resolve too.
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var answers: [UInt16: (ips: [String], ttl: UInt32)] = [:]
+        let qtypes: [UInt16] = [1, 28]
+        let requests = qtypes.compactMap { makeRequest(domain: domain, qtype: $0) }
+        guard requests.count == qtypes.count else {
             completion(nil)
             return
         }
-        let encoded = query.base64URLEncoded()
+        for (qtype, request) in zip(qtypes, requests) {
+            group.enter()
+            transport(request) { [weak self] data in
+                if let self, let data {
+                    let answer = self.parseDNSResponse(data: data)
+                    lock.withLock { answers[qtype] = answer }
+                }
+                group.leave()
+            }
+        }
 
+        group.notify(queue: .global()) { [weak self] in
+            let (v4, v6) = lock.withLock { (answers[1], answers[28]) }
+            let ips = (v4?.ips ?? []) + (v6?.ips ?? [])
+            guard let self, !ips.isEmpty else { return completion(nil) }
+            let ttl = [v4, v6].compactMap { $0 }.filter { !$0.ips.isEmpty }.map(\.ttl).min() ?? 300
+            self.cache.set(domain: domain, ips: ips, ttl: ttl)
+            completion(ips)
+        }
+    }
+
+    private func makeRequest(domain: String, qtype: UInt16) -> URLRequest? {
+        guard let query = buildDNSQuery(domain: domain, qtype: qtype) else {
+            Self.logger.error("Invalid domain name for DNS query: \(domain)")
+            return nil
+        }
         var urlString = serverURL
         if !urlString.contains("/dns-query") && !urlString.contains("?") {
             urlString += "/dns-query"
         }
-        urlString += "?dns=\(encoded)"
-
+        urlString += "?dns=\(query.base64URLEncoded())"
         guard let url = URL(string: urlString) else {
             Self.logger.error("Invalid DoH URL: \(urlString)")
-            completion(nil)
-            return
+            return nil
         }
-
         var request = URLRequest(url: url)
         request.setValue("application/dns-message", forHTTPHeaderField: "Accept")
-
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else {
-                completion(nil)
-                return
-            }
-
-            if let error = error {
-                Self.logger.error("DoH request failed: \(error.localizedDescription)")
-                completion(nil)
-                return
-            }
-
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let data = data else {
-                Self.logger.error("DoH bad response")
-                completion(nil)
-                return
-            }
-
-            let (ips, ttl) = self.parseDNSResponse(data: data)
-            if !ips.isEmpty {
-                self.cache.set(domain: domain, ips: ips, ttl: ttl)
-            }
-
-            completion(ips.isEmpty ? nil : ips)
-        }
-        task.resume()
+        return request
     }
 
     // MARK: - DNS Wire Format

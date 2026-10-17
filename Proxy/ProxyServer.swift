@@ -16,7 +16,8 @@ final class ProxyServer {
     private let settings: AppSettings
     private let ioRoot = DispatchQueue(label: "com.rnglol.Spoofy.io", qos: .userInitiated, attributes: .concurrent)
     private let serverQueue: DispatchQueue
-    private let resolverCache = DoHResolverCache()
+    private let resolverCache: DoHResolverCache
+    private let dialer: Dialing
 
     // serverQueue only
     private var listener: NWListener?
@@ -32,9 +33,12 @@ final class ProxyServer {
     /// Sessions currently admitted (for tests and diagnostics).
     var activeSessionCount: Int { serverQueue.sync { sessions.count } }
 
-    init(port: UInt16, settings: AppSettings) {
+    init(port: UInt16, settings: AppSettings,
+         resolverCache: DoHResolverCache = DoHResolverCache(), dialer: Dialing = ServerConnector()) {
         self.requestedPort = port
         self.settings = settings
+        self.resolverCache = resolverCache
+        self.dialer = dialer
         self.serverQueue = DispatchQueue(label: "com.rnglol.Spoofy.server", target: ioRoot)
     }
 
@@ -180,7 +184,7 @@ final class ProxyServer {
 
             // SOCKS5 greeting starts with version byte 0x05; HTTP always starts with ASCII letter
             if data[0] == 0x05 {
-                SOCKS5Handler(session: session, settings: self.settings, resolverCache: self.resolverCache)
+                SOCKS5Handler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer)
                     .handleGreeting(clientConn: clientConn, data: data, completion: closeConnection)
                 return
             }
@@ -204,22 +208,28 @@ final class ProxyServer {
             }
 
             if request.isConnect {
-                HTTPSHandler(session: session, settings: self.settings, resolverCache: self.resolverCache)
+                HTTPSHandler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer)
                     .handleRequest(clientConn: clientConn, host: request.host, port: request.port, completion: closeConnection)
             } else {
-                HTTPHandler(session: session, settings: self.settings, resolverCache: self.resolverCache)
+                HTTPHandler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer)
                     .handleRequest(clientConn: clientConn, request: request, completion: closeConnection)
             }
         }
     }
 }
 
-/// Thread-safe cache of DoHResolver instances keyed by server URL.
+/// Thread-safe cache of resolvers keyed by DoH server URL.
 final class DoHResolverCache {
-    private var cache: [String: DoHResolver] = [:]
+    private var cache: [String: Resolver] = [:]
     private let lock = NSLock()
+    private let makeResolver: (String) -> Resolver
 
-    func resolver(for profile: SpoofProfile) -> DoHResolver? {
+    /// `makeResolver` is injectable so tests can map names without a network.
+    init(makeResolver: @escaping (String) -> Resolver = { DoHResolver(serverURL: $0) }) {
+        self.makeResolver = makeResolver
+    }
+
+    func resolver(for profile: SpoofProfile) -> Resolver? {
         guard profile.dohEnabled else { return nil }
         let url = profile.dohServerURL
         lock.lock()
@@ -227,7 +237,7 @@ final class DoHResolverCache {
         if let existing = cache[url] {
             return existing
         }
-        let resolver = DoHResolver(serverURL: url)
+        let resolver = makeResolver(url)
         cache[url] = resolver
         return resolver
     }

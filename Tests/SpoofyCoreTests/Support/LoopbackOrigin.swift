@@ -29,11 +29,18 @@ final class LoopbackOrigin {
     /// Connections whose peer (the proxy) closed or reset them.
     var closedCount: Int { lock.withLock { _closedCount } }
 
-    init(_ behaviour: Behaviour) throws {
+    /// `host` restricts the listener to one address (e.g. `::1` for an IPv6-only origin);
+    /// nil listens on both loopback families.
+    init(_ behaviour: Behaviour, host: NWEndpoint.Host? = nil) throws {
         self.behaviour = behaviour
         let params = NWParameters.tcp
         params.requiredInterfaceType = .loopback
-        listener = try NWListener(using: params, on: .any)
+        if let host {
+            params.requiredLocalEndpoint = .hostPort(host: host, port: .any)
+            listener = try NWListener(using: params)
+        } else {
+            listener = try NWListener(using: params, on: .any)
+        }
 
         let ready = DispatchSemaphore(value: 0)
         let failure = LockedBox<Error?>(nil)

@@ -26,16 +26,22 @@ final class LoopbackHarnessTests: XCTestCase {
 
     // MARK: - Fixture
 
-    private func startProxy(splitMode: SplitMode, chunkSize: Int = 5, recordFragmentation: Bool = false) throws -> UInt16 {
+    /// With a `resolver`, DoH is on and every lookup goes to it instead of the network.
+    private func startProxy(splitMode: SplitMode, chunkSize: Int = 5, recordFragmentation: Bool = false,
+                            resolver: FakeResolver? = nil) throws -> UInt16 {
         var master = SpoofProfile.makeDefault()
         master.splitMode = splitMode
         master.chunkSize = chunkSize
         master.tlsRecordFragmentation = recordFragmentation
-        master.dohEnabled = false
+        master.dohEnabled = resolver != nil
         settings.profiles = [master]
         settings.allowLANAccess = false
 
-        let server = ProxyServer(port: 0, settings: settings)
+        let resolverCache = DoHResolverCache { url in
+            guard let resolver else { preconditionFailure("DoH is off, but a resolver was requested for \(url)") }
+            return resolver
+        }
+        let server = ProxyServer(port: 0, settings: settings, resolverCache: resolverCache)
         let started = expectation(description: "proxy ready")
         let failure = LockedBox<Error?>(nil)
         server.start { error in
@@ -48,8 +54,8 @@ final class LoopbackHarnessTests: XCTestCase {
         return try XCTUnwrap(server.port)
     }
 
-    private func startOrigin(_ behaviour: LoopbackOrigin.Behaviour) throws -> LoopbackOrigin {
-        let origin = try LoopbackOrigin(behaviour)
+    private func startOrigin(_ behaviour: LoopbackOrigin.Behaviour, host: NWEndpoint.Host? = nil) throws -> LoopbackOrigin {
+        let origin = try LoopbackOrigin(behaviour, host: host)
         origins.append(origin)
         return origin
     }
@@ -208,11 +214,69 @@ final class LoopbackHarnessTests: XCTestCase {
         try client.send("CONNECT 127.0.0.1:\(deadPort) HTTP/1.1\r\n\r\n")
         // mode=none: the 200 goes out before the dial, then the client is dropped.
         _ = try client.read(through: Self.crlf2)
-        // A refused dial leaves NWConnection in .waiting, which the handler ignores until its 10 s timeout.
-        let closed = client.waitForClose(timeout: 2)
-        XCTExpectFailure("N11: a refused connection waits out the 10 s dial timeout") {
-            XCTAssertTrue(closed)
+        // A refused dial puts NWConnection in .waiting, which the dialer treats as a failure (N11).
+        XCTAssertTrue(client.waitForClose(timeout: 2))
+    }
+
+    // MARK: - Scenario 1b: the DoH path, through FakeResolver (step 4b)
+
+    func testConnectThroughDoHUsesResolvedAddress() throws {
+        let origin = try startOrigin(.echo)
+        let resolver = FakeResolver(["origin.test": ["127.0.0.1"]])
+        let port = try startProxy(splitMode: .none, resolver: resolver)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: "origin.test")
+        try client.send("hello origin")
+        XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8))
+        XCTAssertEqual(resolver.queries, ["origin.test"])
+    }
+
+    func testDoHWithIPv6OnlyAnswerConnects() throws {
+        // N10: AAAA answers are dialed too.
+        let origin = try startOrigin(.echo, host: "::1")
+        let resolver = FakeResolver(["v6.test": ["::1"]])
+        let port = try startProxy(splitMode: .none, resolver: resolver)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: "v6.test")
+        try client.send("hello origin")
+        XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8))
+    }
+
+    func testDeadFirstAddressFallsBackToTheNext() throws {
+        // N10/N11: the IPv4 address is refused (the origin only listens on ::1); the dialer moves on.
+        let origin = try startOrigin(.echo, host: "::1")
+        let resolver = FakeResolver(["both.test": ["127.0.0.1", "::1"]])
+        let port = try startProxy(splitMode: .none, resolver: resolver)
+        let started = Date()
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: "both.test")
+        try client.send("hello origin")
+        XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "fallback must not wait for a timeout")
+    }
+
+    func testIPLiteralSkipsDoH() throws {
+        // N10: the resolver is never asked about an address.
+        let origin = try startOrigin(.echo)
+        let resolver = FakeResolver([:])
+        let port = try startProxy(splitMode: .none, resolver: resolver)
+        for host in ["127.0.0.1", "[::1]"] {
+            let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: host)
+            try client.send("hello origin")
+            XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8), host)
+            client.close()
         }
+        let socks = try socksTunnel(proxyPort: port, target: .ipv6, originPort: origin.port)
+        try socks.send("hello origin")
+        XCTAssertEqual(try socks.read(count: 12), Data("hello origin".utf8))
+        XCTAssertEqual(resolver.queries, [])
+    }
+
+    func testUnresolvedNameFallsBackToSystemResolver() throws {
+        let origin = try startOrigin(.echo)
+        let resolver = FakeResolver([:])
+        let port = try startProxy(splitMode: .none, resolver: resolver)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: "localhost")
+        try client.send("hello origin")
+        XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8))
+        XCTAssertEqual(resolver.queries, ["localhost"])
     }
 
     // MARK: - Scenario 2: SOCKS5 with domain, IPv4 and IPv6 targets

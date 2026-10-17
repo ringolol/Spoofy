@@ -9,16 +9,18 @@ final class SOCKS5Handler {
 
     private let settings: AppSettings
     private let resolverCache: DoHResolverCache
+    private let dialer: Dialing
     private let session: SessionScope
     /// The session's serial queue: every connection, timer and callback of this session runs here.
     private let queue: DispatchQueue
 
     /// One handler per session; its callbacks keep it alive until the session ends.
-    init(session: SessionScope, settings: AppSettings, resolverCache: DoHResolverCache) {
+    init(session: SessionScope, settings: AppSettings, resolverCache: DoHResolverCache, dialer: Dialing) {
         self.session = session
         self.queue = session.queue
         self.settings = settings
         self.resolverCache = resolverCache
+        self.dialer = dialer
     }
 
     // MARK: - Phase 1: Greeting
@@ -267,7 +269,7 @@ final class SOCKS5Handler {
         if profile.routeMode == .vpn, let outlineConfig = profile.outlineConfig {
             Self.logger.info("[\(host)] SOCKS5 VPN mode")
             let connectVPN = { (targetHost: String) in
-                ShadowsocksStream.connect(config: outlineConfig, targetHost: targetHost, targetPort: port, queue: self.queue) { stream in
+                ShadowsocksStream.connect(config: outlineConfig, targetHost: targetHost, targetPort: port, dialer: self.dialer, session: self.session) { stream in
                     if let stream { self.session.adopt(stream) }
                     guard let stream = stream else {
                         Self.logger.error("[\(host)] Failed to connect to Outline server")
@@ -287,7 +289,7 @@ final class SOCKS5Handler {
             }
             if let resolver = dohResolver {
                 resolver.resolve(domain: host, on: self.queue) { ips in
-                    let resolved = ips?.first ?? host
+                    let resolved = ips.flatMap { ServerConnector.interleave($0).first } ?? host
                     if resolved != host { Self.logger.debug("[\(host)] DoH resolved to \(resolved)") }
                     connectVPN(resolved)
                 }
@@ -503,66 +505,15 @@ final class SOCKS5Handler {
         })
     }
 
-    private func resolveAndConnect(host: String, port: UInt16, dohResolver: DoHResolver?, completion: @escaping (NWConnection?) -> Void) {
-        if let resolver = dohResolver {
-            resolver.resolve(domain: host, on: self.queue) { ips in
-                let targetHost: NWEndpoint.Host
-                if let ip = ips?.first {
-                    Self.logger.debug("[\(host)] DoH resolved to \(ip)")
-                    targetHost = NWEndpoint.Host(ip)
-                } else {
-                    targetHost = NWEndpoint.Host(host)
-                }
-                let conn = self.createServerConnection(host: targetHost, port: port)
-                self.waitForReady(conn: conn, host: host, completion: completion)
-            }
-        } else {
-            let conn = createServerConnection(host: NWEndpoint.Host(host), port: port)
-            waitForReady(conn: conn, host: host, completion: completion)
-        }
-    }
-
-    private func createServerConnection(host: NWEndpoint.Host, port: UInt16) -> NWConnection {
-        let tcpOptions = NWProtocolTCP.Options()
-        tcpOptions.noDelay = true
-        let params = NWParameters(tls: nil, tcp: tcpOptions)
-        params.preferNoProxies = true
-        let conn = NWConnection(host: host, port: NWEndpoint.Port(rawValue: port)!, using: params)
-        session.adopt(conn)
-        return conn
-    }
-
-    private func waitForReady(conn: NWConnection, host: String, completion: @escaping (NWConnection?) -> Void) {
-        let completed = LockedFlag()
-
-        conn.stateUpdateHandler = { state in
-            switch state {
-            case .ready:
-                conn.stateUpdateHandler = nil
-                guard completed.setIfFalse() else { return }
+    private func resolveAndConnect(host: String, port: UInt16, dohResolver: Resolver?, completion: @escaping (NWConnection?) -> Void) {
+        dialer.dial(DialTarget(host: host, port: port), resolver: dohResolver, session: session) { result in
+            switch result {
+            case .success(let conn):
                 completion(conn)
-            case .failed(let error):
-                Self.logger.error("[\(host)] Server conn failed: \(error.localizedDescription)")
-                conn.stateUpdateHandler = nil
-                guard completed.setIfFalse() else { return }
-                conn.cancel()
+            case .failure(let error):
+                Self.logger.error("[\(host)] Server connect failed: \(error.description)")
                 completion(nil)
-            case .cancelled:
-                conn.stateUpdateHandler = nil
-                guard completed.setIfFalse() else { return }
-                completion(nil)
-            default:
-                break
             }
-        }
-        conn.start(queue: queue)
-
-        queue.asyncAfter(deadline: .now() + 10) {
-            guard completed.setIfFalse() else { return }
-            Self.logger.warning("[\(host)] Server connect timeout")
-            conn.stateUpdateHandler = nil
-            conn.cancel()
-            completion(nil)
         }
     }
 }

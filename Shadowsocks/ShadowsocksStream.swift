@@ -53,13 +53,15 @@ final class ShadowsocksStream: ConnectionProtocol {
         self.queue = queue
     }
 
-    /// Creates a ShadowsocksStream connected to the Outline server.
+    /// Creates a ShadowsocksStream connected to the Outline server, dialed through `dialer`
+    /// (so it gets the shared timeout and `.waiting` handling, N1). Runs on `session.queue`.
     /// On success, the stream is ready for send/receive via ConnectionRelay.
     static func connect(
         config: OutlineServerConfig,
         targetHost: String,
         targetPort: UInt16,
-        queue: DispatchQueue,
+        dialer: Dialing,
+        session: SessionScope,
         completion: @escaping (ShadowsocksStream?) -> Void
     ) {
         guard let addressHeader = encodeTargetAddress(host: targetHost, port: targetPort) else {
@@ -80,42 +82,24 @@ final class ShadowsocksStream: ConnectionProtocol {
             masterKey = ShadowsocksCrypto.masterKey(from: config.password, keyLen: keyLen)
         }
 
-        let tcpOptions = NWProtocolTCP.Options()
-        tcpOptions.noDelay = true
-        let params = NWParameters(tls: nil, tcp: tcpOptions)
-        params.preferNoProxies = true
-
-        let host = NWEndpoint.Host(config.host)
-        let port = NWEndpoint.Port(rawValue: config.port)!
-        let conn = NWConnection(host: host, port: port, using: params)
-
-        conn.stateUpdateHandler = { state in
-            switch state {
-            case .ready:
-                conn.stateUpdateHandler = nil
+        dialer.dial(DialTarget(host: config.host, port: config.port), resolver: nil, session: session) { result in
+            switch result {
+            case .success(let conn):
                 let stream = ShadowsocksStream(
                     underlying: conn,
                     masterKey: masterKey,
                     cipher: config.cipher,
                     prefix: config.prefix,
                     addressHeader: addressHeader,
-                    queue: queue
+                    queue: session.queue
                 )
                 logger.info("Connected to Outline server \(config.host):\(config.port) for \(targetHost):\(targetPort)")
                 completion(stream)
-            case .failed(let error):
-                conn.stateUpdateHandler = nil
-                logger.error("Failed to connect to Outline server: \(error.localizedDescription)")
-                conn.cancel()
+            case .failure(let error):
+                logger.error("Failed to connect to Outline server: \(error.description)")
                 completion(nil)
-            case .cancelled:
-                conn.stateUpdateHandler = nil
-                completion(nil)
-            default:
-                break
             }
         }
-        conn.start(queue: queue)
     }
 
     // MARK: - ConnectionProtocol: Send

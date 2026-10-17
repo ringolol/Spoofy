@@ -193,14 +193,12 @@ Expected-failure ledger. Each item flips to a passing test when its fix lands; r
 | U7 | `LoopbackHarnessTests.testServerFirstBannerReachesClientInSplitMode`, `testNonTLSClientFirstBytesPassThroughInSplitMode` | `XCTExpectFailure` |
 | U8 | `LoopbackHarnessTests.testSNIModeWithRecordFragmentationSendsSeveralRecords` (end-to-end twin of the unit test) | `XCTExpectFailure` |
 | N9 | `LoopbackHarnessTests.testPlainHTTPIsRewrittenToOriginForm` | `XCTExpectFailure` |
-| N11 | `LoopbackHarnessTests.testConnectToClosedPortClosesClient` | `XCTExpectFailure` |
 | N15 | `LoopbackHarnessTests.testShortFirstClientWriteIsForwarded` | `XCTExpectFailure` |
 | M4 | `SettingsStoreTests.testOutOfRangePortFallsBack` | `XCTSkipIf`, because it traps |
 | M5 | `TLSParserTests.testParsesFromDataSlice` | `XCTSkipIf`, because it traps |
 
 These items need the seams from later phases, so they are deferred:
 - `ShadowsocksFramingTests` (§6.8).
-- The N10 IP-literal short-circuit, which needs an injectable resolver transport (Phase 3).
 - The §5.2 SOCKS5 and CONNECT session tests (§6.4/6.5).
 
 **`TLSParserTests`**
@@ -377,6 +375,18 @@ Algorithm (one dial runs entirely on the caller's session queue):
 7. `trace?.record(.dnsResolved / .tcpConnecting / .tcpReady / .failed)`. The hooks are network-scanner §1's `ConnectionTrace`, unchanged.
 
 TCP options: `noDelay = true` on the outbound. It matters for desync, because otherwise Nagle can merge the segments we split on purpose. The current code sets it in some copies; make sure it is always set.
+
+**Step 4b status: done.**
+- `Proxy/ServerConnector.swift` holds `DialTarget`, `DialError`, `Resolver`, `Dialing` and `ServerConnector`. The three `createServerConnection` / `waitForReady` copies are gone; each handler's `resolveAndConnect` is now a five-line call to `dialer.dial`. `ShadowsocksStream.connect` dials the Outline server through it too, so N1 (no timeout, `.waiting` ignored) is fixed.
+- Algorithm as above: IP literals skip the resolver; addresses interleave IPv4-first; attempts start every 250 ms or immediately after a failure; `.waiting` counts as a failure (N11); the first `.ready` wins and the rest are cancelled; a 10 s overall deadline. Every attempt is adopted by the session, and a session that closes mid-dial completes with `.cancelled`.
+- `DoHResolver` (N10): IP literals (bracketed too) answer themselves; A and AAAA go out in parallel and merge IPv4-first; one failed query doesn't discard the other's answer. The transport is injected (`DoHResolver.Transport`), so the lookup path has unit tests (`DoHResolverTests`).
+- `DoHResolverCache` takes a resolver factory, and `ProxyServer` takes the cache and a `Dialing`. `FakeResolver` (tests) maps names to loopback addresses and records lookups; harness scenario 1b covers the DoH path, IPv6-only answers, fallback past a refused address, literals skipping DoH, and an unresolved name.
+- **Deviations from the sketch above:**
+  - `dial` takes `resolver:` per call and `session: SessionScope` rather than `on queue:`. The resolver depends on the matched profile, and the session is what owns (and cancels) the attempts. A probe in network-scanner §8 creates its own `SessionScope`.
+  - `Resolver` returns `[String]?`, not `Result<[IPAddress], Error>`. nil keeps today's behaviour: fall back to the system resolver, so `DialError` has no `resolveFailed` / `noAddresses`.
+  - No `trace:` parameter yet: `ConnectionTrace` doesn't exist. network-scanner §2 adds it to `dial` and `DialAttempt`.
+  - The system-resolver path (DoH off) is a single attempt to the hostname; `NWConnection` does its own happy eyeballs there.
+- Not covered by tests: the 10 s overall timeout. A loopback dial is refused or accepted at once; a blackhole would need a non-loopback address.
 
 ### 6.3 `ClientHelloReader` (replaces both `ensureFullTLSRecord`s)
 
@@ -628,11 +638,11 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 2 | §5.1 unit tests (with expected failures for open bugs) and `FakeConnection` relay tests. **Done**: see the §5.1 status | Green |
 | 3 | Loopback harness (§5.3). `ProxyServer` exposes its port; config injected (resolver with 4b). **Done**: see the §5.3 status | Scenarios 1–4 green against the **current** handlers |
 | 4a | Serial session queues (§6.1), M1, M2, N14. **Done**: see the §6.1 status | All tests green |
-| 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11 | Green; network-scanner §1 is unblocked |
+| 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11. **Done**: see the §6.2 status | Green; network-scanner §1 is unblocked |
 | 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15 | Expected-failures for U7, N7, U8 and N15 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7 | §5.2 session tests and harness scenarios 1–5 green |
 | 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, M4, M6 | Characterization tests decide U3 semantics |
-| 4f | Shadowsocks codec extraction, N1–N5 and N13 | Codec KATs and opt-in interop scenario 6 green |
+| 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b) | Codec KATs and opt-in interop scenario 6 green |
 | 4g | App layer U11, U12, M3 | Manual: call interruption test on device |
 
 Each row is one PR-sized change. Steps 4a–4c are mechanical and low-risk. Step 4d is the big one, and it lands only when the harness is green against the old handlers, so the harness is the contract.

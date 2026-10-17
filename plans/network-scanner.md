@@ -82,6 +82,8 @@ lives in `DetectionConfig` (§4.1), not inline.
 
 ## 1. Shared server connector (refactor, no behaviour change)
 
+> **Landed** as refactor-and-tests step 4b: `Proxy/ServerConnector.swift`, with the signature in that plan's §6.2 status. It does change behaviour: `.waiting` now fails the attempt (N11) rather than waiting it out. The trace hooks below are still to be added.
+
 New `Proxy/ServerConnector.swift`, replacing the three copies:
 
 ```swift
