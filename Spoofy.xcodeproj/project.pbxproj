@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		09FFCA969FA6759926E5ADD6 /* DNSCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000B /* DNSCache.swift */; };
 		3FEFF257708CE9D7C1472D22 /* ConnectionRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0006 /* ConnectionRelay.swift */; };
-		449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0003 /* HTTPParser.swift */; };
+		449947202C32DB536E9EF6D1 /* HTTPHeadParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0003 /* HTTPHeadParser.swift */; };
 		4BA56F99DB92ECEC3FD52A81 /* TLSDesyncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0008 /* TLSDesyncer.swift */; };
 		4C0000000000000000000005 /* ClientHelloReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0000000000000000000006 /* ClientHelloReader.swift */; };
 		60DABCCCD7228765947F380D /* DoHResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000A /* DoHResolver.swift */; };
@@ -18,8 +18,8 @@
 		7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA87CBA2F5F2B4B00819091 /* ContentView.swift */; };
 		7FA87CBD2F5F2B4D00819091 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */; };
 		7FA87CC02F5F2B4D00819091 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */; };
-		7FE5219A2F749F3300F0BA0C /* SOCKS5Handler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */; };
-		9542604D3D1E3F43F900321B /* HTTPSHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0005 /* HTTPSHandler.swift */; };
+		7FE5219A2F749F3300F0BA0C /* SOCKS5Parser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FE521992F749F3300F0BA0C /* SOCKS5Parser.swift */; };
+		9542604D3D1E3F43F900321B /* Outbound.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0005 /* Outbound.swift */; };
 		9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */; };
 		AA00000100000001AABB000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000E /* SettingsView.swift */; };
 		AA00000100000001AABB000F /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000C /* AppSettings.swift */; };
@@ -28,12 +28,14 @@
 		AA00000100000001AABB0012 /* ShadowsocksStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0012 /* ShadowsocksStream.swift */; };
 		AA00000100000001AABB0013 /* OutlineAccessKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0013 /* OutlineAccessKey.swift */; };
 		BE8C26D69618E16F5A2EBA03 /* TLSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0007 /* TLSParser.swift */; };
-		CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0004 /* HTTPHandler.swift */; };
+		CD5FD9224B8A6EB7C5DB25C1 /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0004 /* Router.swift */; };
 		FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0002 /* ProxyServer.swift */; };
 		5E5510000000000000000001 /* SessionScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5510000000000000000002 /* SessionScope.swift */; };
 		5E5520000000000000000001 /* ServerConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5520000000000000000002 /* ServerConnector.swift */; };
 		4C0000000000000000000003 /* SegmentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0000000000000000000004 /* SegmentWriter.swift */; };
 		4C0000000000000000000001 /* FirstFlightReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0000000000000000000002 /* FirstFlightReader.swift */; };
+		4D0000000000000000000001 /* Inbound.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0000000000000000000002 /* Inbound.swift */; };
+		4D0000000000000000000003 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0000000000000000000004 /* Session.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,15 +47,17 @@
 		7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		7FE364DF2F6BAC66004F5832 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOCKS5Handler.swift; sourceTree = "<group>"; };
+		7FE521992F749F3300F0BA0C /* SOCKS5Parser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOCKS5Parser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0002 /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
 		5E5510000000000000000002 /* SessionScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionScope.swift; sourceTree = "<group>"; };
 		5E5520000000000000000002 /* ServerConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConnector.swift; sourceTree = "<group>"; };
 		4C0000000000000000000004 /* SegmentWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentWriter.swift; sourceTree = "<group>"; };
 		4C0000000000000000000002 /* FirstFlightReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstFlightReader.swift; sourceTree = "<group>"; };
-		AA00000200000001AABB0003 /* HTTPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPParser.swift; sourceTree = "<group>"; };
-		AA00000200000001AABB0004 /* HTTPHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPHandler.swift; sourceTree = "<group>"; };
-		AA00000200000001AABB0005 /* HTTPSHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPSHandler.swift; sourceTree = "<group>"; };
+		4D0000000000000000000002 /* Inbound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Inbound.swift; sourceTree = "<group>"; };
+		4D0000000000000000000004 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0003 /* HTTPHeadParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPHeadParser.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0004 /* Router.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Router.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB0005 /* Outbound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Outbound.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0006 /* ConnectionRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRelay.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0007 /* TLSParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSParser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0008 /* TLSDesyncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSDesyncer.swift; sourceTree = "<group>"; };
@@ -128,15 +132,17 @@
 		AA00000300000001AABB0001 /* Proxy */ = {
 			isa = PBXGroup;
 			children = (
-				7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */,
+				7FE521992F749F3300F0BA0C /* SOCKS5Parser.swift */,
 				AA00000200000001AABB0002 /* ProxyServer.swift */,
 				5E5510000000000000000002 /* SessionScope.swift */,
 				5E5520000000000000000002 /* ServerConnector.swift */,
 				4C0000000000000000000004 /* SegmentWriter.swift */,
 				4C0000000000000000000002 /* FirstFlightReader.swift */,
-				AA00000200000001AABB0003 /* HTTPParser.swift */,
-				AA00000200000001AABB0004 /* HTTPHandler.swift */,
-				AA00000200000001AABB0005 /* HTTPSHandler.swift */,
+				4D0000000000000000000002 /* Inbound.swift */,
+				4D0000000000000000000004 /* Session.swift */,
+				AA00000200000001AABB0003 /* HTTPHeadParser.swift */,
+				AA00000200000001AABB0004 /* Router.swift */,
+				AA00000200000001AABB0005 /* Outbound.swift */,
 				AA00000200000001AABB0006 /* ConnectionRelay.swift */,
 			);
 			path = Proxy;
@@ -254,16 +260,18 @@
 				7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */,
 				AA00000100000001AABB000E /* SettingsView.swift in Sources */,
 				AA00000100000001AABB000F /* AppSettings.swift in Sources */,
-				7FE5219A2F749F3300F0BA0C /* SOCKS5Handler.swift in Sources */,
+				7FE5219A2F749F3300F0BA0C /* SOCKS5Parser.swift in Sources */,
 				9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */,
 				FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */,
 				5E5510000000000000000001 /* SessionScope.swift in Sources */,
 				5E5520000000000000000001 /* ServerConnector.swift in Sources */,
 				4C0000000000000000000003 /* SegmentWriter.swift in Sources */,
 				4C0000000000000000000001 /* FirstFlightReader.swift in Sources */,
-				449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */,
-				CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */,
-				9542604D3D1E3F43F900321B /* HTTPSHandler.swift in Sources */,
+				4D0000000000000000000001 /* Inbound.swift in Sources */,
+				4D0000000000000000000003 /* Session.swift in Sources */,
+				449947202C32DB536E9EF6D1 /* HTTPHeadParser.swift in Sources */,
+				CD5FD9224B8A6EB7C5DB25C1 /* Router.swift in Sources */,
+				9542604D3D1E3F43F900321B /* Outbound.swift in Sources */,
 				3FEFF257708CE9D7C1472D22 /* ConnectionRelay.swift in Sources */,
 				BE8C26D69618E16F5A2EBA03 /* TLSParser.swift in Sources */,
 				4BA56F99DB92ECEC3FD52A81 /* TLSDesyncer.swift in Sources */,

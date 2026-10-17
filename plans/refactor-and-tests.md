@@ -77,9 +77,6 @@ Each finding has an ID that later phases refer to.
 | N3 | `ShadowsocksStream.swift:70` | The comment says Outline uses a base64 PSK. It doesn't: classic AEAD ciphers use EVP_BytesToKey(password). It only seems right because Outline passwords look like base64. | Fix the comment and pin the behaviour with the KAT in §5.1. |
 | N4 | `ShadowsocksStream` (send path) | The address header goes out only with the first **client** data. Server-first protocols (SMTP, some game and chat protocols) therefore hang over VPN, because the server never learns the target. | Use outline-sdk's `ClientDataWait` behaviour: wait up to 10 ms for the first client data and coalesce, then flush the header alone. |
 | N5 | `ShadowsocksStream` salt generation | The `SecRandomCopyBytes` status is ignored. On failure, the salt is all zeros, so nonces are reused across connections. | Check the status and fail the connection on error. Alternatively, `SystemRandomNumberGenerator` fills the salt, and it cannot fail. |
-| N6 | `SOCKS5Handler.processGreeting` / `parseAddress` | Bytes after the greeting or request in the same read are dropped. A client that pipelines (greeting + request, or request + ClientHello) breaks. Short reads are also not handled. | Use an incremental parser with a leftover buffer (§6.4.2). |
-| N8 | All handshakes | No timeout before the relay starts. A client that opens a socket and sends nothing (or one byte) holds a slot forever, out of only 200 slots. | Use a session-level handshake deadline: 10 s from accept until the relay starts. |
-| N9 | `ProxyServer.readRequest`, `HTTPHandler` | A single `receive(≤8192)` is assumed to hold the whole request head. Long cookies or a split read cause a 400. A plain-HTTP keep-alive connection that then asks for a **different host** is forwarded to the first host. | Use an incremental head parser up to 64 KB (§6.4.1). Rewrite the absolute-form request to origin-form, strip `Proxy-*` headers, and force `Connection: close` upstream, so there is one request per upstream connection. |
 | N10 | `DoHResolver` | Queries A records only, so IPv6-only hosts fail. It sends DoH queries for IP literals. Callers use only `ips.first`, so a single dead IP fails the connection. | Skip DoH for IP literals. Query A and AAAA in parallel. Return all addresses; the `Dialer` tries them in order with a 250 ms stagger (SpoofDPI `DialFastest`). |
 | N11 | `HTTPSHandler.waitForReady` (all 3 copies) | `.waiting(error)` is ignored, so an unreachable host waits the full 10 seconds. This was also noted in network-scanner §1. | The `Dialer` treats `.waiting` as a failure for that address and moves to the next one. |
 | N12 | `ConnectionRelay.pipe` | EOF on one side cancels the other immediately, so there is no half-close. This matches SpoofDPI but breaks request/response protocols that half-close (rare over 443). | **Keep the current behaviour** in the refactor, behind a `RelayPolicy.closeOnFirstEOF` default. Note half-close as a possible follow-up. Don't change two things at once. |
@@ -96,7 +93,6 @@ Each finding has an ID that later phases refer to.
 | M4 | `AppSettings.proxyPort` | `UInt16(defaults.integer)` traps on out-of-range values, for example after an import. | `UInt16(exactly:) ?? 8080`, and validate in the UI. |
 | M5 | `TLSParser` `Data.readUInt16(at:)` | Assumes zero-based indices and breaks on a `Data` slice. `splitFirstByte` returns `dropFirst` slices, which aren't zero-based. | Index from `startIndex`, or normalise with `Data(slice)` at module boundaries. Add a test that parses a slice. |
 | M6 | `ProfileEditView` | Saves on every keystroke, which re-encodes all profiles each time. | Use a local edit buffer and save on disappear or Done. With §6.7 the store debounces writes anyway. |
-| M7 | `SOCKS5Handler.sendReply` | Always replies BND.ADDR 0.0.0.0:0. That is legal, but some clients log warnings. | Keep it. Document it in a comment. |
 
 ## 3. SpoofDPI comparison (what to port, what not)
 
@@ -185,13 +181,12 @@ Expected-failure ledger. Each item flips to a passing test when its fix lands; r
 | U5 | `SettingsStoreTests.testImportRejectsMissingMaster`, `testImportRejectsDuplicateIDs` | `XCTExpectFailure` |
 | N2 | `OutlineAccessKeyTests.testPrefixLongerThanSaltIsRejected` | `XCTExpectFailure` |
 | N13 | `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes` | `XCTExpectFailure` |
-| N9 | `LoopbackHarnessTests.testPlainHTTPIsRewrittenToOriginForm` | `XCTExpectFailure` |
 | M4 | `SettingsStoreTests.testOutOfRangePortFallsBack` | `XCTSkipIf`, because it traps |
 | M5 | `TLSParserTests.testParsesFromDataSlice` | `XCTSkipIf`, because it traps |
 
 These items need the seams from later phases, so they are deferred:
 - `ShadowsocksFramingTests` (§6.8).
-- The §5.2 SOCKS5 and CONNECT session tests (§6.4/6.5).
+- ~~The §5.2 SOCKS5 and CONNECT session tests (§6.4/6.5).~~ Landed with 4d (`SessionTests`).
 
 **`TLSParserTests`**
 - `TLSMessage.parse` on a real Chrome ClientHello and a real Firefox ClientHello (captured hex in `Fixtures/`). Checks: `isClientHello`, record length, SNI offset pointing at the hostname bytes.
@@ -303,7 +298,7 @@ Test ──NWConnection──▶ ProxyServer(127.0.0.1:0) ──▶ LoopbackOrig
 - Support: `LoopbackOrigin` (listener bound to the loopback interface, v4 and v6, with `.echo`, `.recordAll`, `.serverFirst`; it records every byte) and `TestClient` (blocking reads with deadlines: `read(count:)`, `read(through:)`, `waitForClose`). Each wait is at most 5 s; the session log isn't attached yet (os.log only), which is worth adding with the §6.1 session object.
 - Scenario 1: every split mode delivers the TLS 1.3 hello plus trailing data byte-exact; with record fragmentation the records re-assemble to the original handshake for chunk, firstByte and random (SNI is U8). Echo round-trip, 400 for garbage, refused dial (N11).
 - Scenario 2: SOCKS5 echo for domain (`localhost`), IPv4 and IPv6 targets; the hello is delivered unchanged; `0x07` for BIND; `0xFF` with no acceptable method. The client waits for the method reply before sending the request (N6 is a §5.2 fake-connection test).
-- Scenario 3: the absolute-form request reaches the origin and the response comes back; the origin-form rewrite is N9 (expected failure).
+- Scenario 3: the absolute-form request reaches the origin and the response comes back; since 4d the origin sees origin-form with `Connection: close` (N9), including a 20 KB head split across writes.
 - Scenario 4: the banner arrives in mode `none`; in split modes it doesn't, and non-TLS first bytes stall (U7). A first write under 5 bytes stalls in both CONNECT and SOCKS5 (N15). All of these pass since 4c.
 - Scenario 5 landed with 4a: `testConnectionCapAdmitsExactly200` (250 clients, exactly 50 refused, freed slots re-admit), `testStopClosesSessionsInEveryPhase` (relaying, idle and mid-SOCKS5 sessions all close, and so does the upstream), `testSessionSlotIsReleasedWhenClientCloses`. Scenario 6 (Shadowsocks interop) comes with 4f.
 
@@ -580,6 +575,23 @@ Ordering detail for the desync tunnel: the client must get "200" or the SOCKS su
 
 `Session` is a `final class` holding `state` (an enum with associated values: parser, reader, connections). Each transition is a method that asserts the expected prior state. Wrong-state callbacks, such as a late timer after close, are ignored once `state == .closed`.
 
+**Step 4d status: done.**
+- `Proxy/Inbound.swift`: `InboundRequest` (`target`, `kind: .tunnel | .http(head:)`, `leftover`), the `InboundStep` enum and the `InboundParser` protocol; `InboundProtocol(firstByte:)` picks SOCKS5 for `0x05`, HTTP otherwise.
+- `Proxy/HTTPHeadParser.swift` (§6.4.1, N9): incremental up to 64 KB (431 beyond); CONNECT authority validation (bracketed v6 only, port 1–65535, host ≤ 255 bytes, no `/ @` or whitespace); absolute-form `http://` rewritten to origin-form on raw bytes, `Proxy-*`, `Connection`, `Keep-Alive` (and their obs-folds) dropped, `Host` added if missing, `Connection: close` appended. `HTTPHeadParserTests`.
+- `Proxy/SOCKS5Parser.swift` (§6.4.2, N6): byte-at-a-time safe, pipelined greeting + request + hello in one read keeps the hello as `leftover`. Dial errors map to reply codes (timeout `0x06`, refused `0x05`, host/DNS `0x04`, network `0x03`, else `0x01`; rejected route `0x02`). M7: BND.ADDR stays 0.0.0.0:0, documented at `reply(_:)`. `SOCKS5ParserTests`.
+- `Proxy/Router.swift`: `Router.route` / `Router.outbound(for:kind:)`, the only check of route mode and Outline config (U6; `AppSettings.isVPNMissingConfig` is gone). `RouterTests` has the decision table.
+- `Proxy/Outbound.swift`: `DirectOutbound` and `ShadowsocksOutbound` (DoH unless the target is an IP literal).
+- `Proxy/Session.swift`: the pipeline above, phases `accepted → handshaking → connecting → [readingFirstFlight → writingFirstFlight] → relaying → closed` plus `failing`; every callback checks the phase. `close` is idempotent and logs one summary line. N8: a 10 s deadline (generation-guarded) from accept until the request is parsed, and again from the success reply until the first flight is complete. `SessionTests` (20, over `FakeConnection` and a scripted `FakeOutbound`).
+- `ProxyServer` only admits, registers and stops sessions; `readRequest` and the three handlers are deleted. `ProxyServer(limits: Session.Limits)` replaces `firstByteTimeout:`.
+- Harness additions: 20 KB plain-HTTP head split across writes, silent client and half a ClientHello closed by the deadline, SOCKS5 greeting + request + hello pipelined; a refused CONNECT is now 502.
+- **Deviations:**
+  - **Every tunnel dials before its success reply**, desync ones too: the client gets 502/504 or a SOCKS5 code instead of 200 then a reset. The first flight is read after the reply, then written to the already-open upstream. Cost: one dial per tunnel even if the client never sends a byte, and the dial no longer overlaps the client's ClientHello.
+  - `Outbound` only connects (`connect(_:session:completion:)`); the first flight is written by the session with `SegmentWriter`. There is no `DesyncOutbound` or `Desyncer` protocol yet, and no `inner:` on `.shadowsocks`.
+  - `SessionScope` stays as the connection-lifetime object (`Dialer` and `ShadowsocksStream` adopt into it); `Session` holds one.
+  - The rewritten request keeps the client's HTTP version rather than forcing 1.1.
+  - `Router` takes a `profileForHost` closure (from `AppSettings` for now); `ProxyConfig` and `ResolvedProfile` come with 4e.
+  - The deadline covers client-side waits only; the dial has its own 10 s timeout and the relay its 120 s idle timeout.
+
 ### 6.6 `DomainMatcher`
 
 This is SpoofDPI's trie semantics, specified exactly so it can be tested:
@@ -645,7 +657,7 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 4a | Serial session queues (§6.1), M1, M2, N14. **Done**: see the §6.1 status | All tests green |
 | 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11. **Done**: see the §6.2 status | Green; network-scanner §1 is unblocked |
 | 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15. **Done**: see the §6.3 status | Expected-failures for U7, N7, U8 and N15 removed |
-| 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7 | §5.2 session tests and harness scenarios 1–5 green |
+| 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7. **Done**: see the §6.5 status | §5.2 session tests and harness scenarios 1–5 green |
 | 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, M4, M6 | Characterization tests decide U3 semantics |
 | 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b) | Codec KATs and opt-in interop scenario 6 green |
 | 4g | App layer U11, U12, M3 | Manual: call interruption test on device |

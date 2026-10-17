@@ -23,9 +23,9 @@ enum SegmentWriter {
         })
     }
 
-    /// Sends `flight` to `conn`: a ClientHello is desynced per `profile`, then its leftover follows;
+    /// Sends `flight` to `conn`: a ClientHello is desynced per `desync`, then its leftover follows;
     /// raw bytes go out unchanged.
-    static func writeFirstFlight(_ flight: FirstFlight, profile: SpoofProfile, to conn: any ConnectionProtocol,
+    static func writeFirstFlight(_ flight: FirstFlight, desync: DesyncParameters, to conn: any ConnectionProtocol,
                                  label: String, completion: @escaping (NWError?) -> Void) {
         switch flight {
         case .empty:
@@ -36,12 +36,12 @@ enum SegmentWriter {
         case .clientHello(let record, let sniOffset, let leftover):
             var segments = TLSDesyncer.split(
                 raw: record,
-                mode: profile.splitMode,
-                chunkSize: profile.chunkSize,
+                mode: desync.mode,
+                chunkSize: desync.chunkSize,
                 sniOffset: sniOffset,
-                tlsRecordFragmentation: profile.tlsRecordFragmentation
+                tlsRecordFragmentation: desync.recordFragmentation
             )
-            logger.info("[\(label)] ClientHello \(record.count)B → \(segments.count) segments (mode=\(profile.splitMode.rawValue), sni=\(String(describing: sniOffset)))")
+            logger.info("[\(label)] ClientHello \(record.count)B → \(segments.count) segments (mode=\(desync.mode.rawValue), sni=\(String(describing: sniOffset)))")
             if !leftover.isEmpty { segments.append(leftover) }
             write(segments, to: conn, completion: completion)
         }

@@ -97,12 +97,6 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
     var inheritDoH: Bool
     var inheritOutlineConfig: Bool
 
-    /// VPN route without a server config. Such connections must be rejected rather than
-    /// silently sent direct, which would expose them to DPI. Call on a resolved profile.
-    var isVPNMissingConfig: Bool {
-        routeMode == .vpn && outlineConfig == nil
-    }
-
     static func makeDefault() -> SpoofProfile {
         SpoofProfile(
             id: UUID(),

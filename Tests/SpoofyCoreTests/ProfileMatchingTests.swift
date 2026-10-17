@@ -47,24 +47,4 @@ final class ProfileMatchingTests: XCTestCase {
         settings.profiles = [master, custom("last", patterns: ["x.com"])]
         XCTAssertEqual(settings.matchingProfile(for: "other.org").id, master.id)
     }
-
-    // U6: a VPN route without a config is detectable so handlers can reject it.
-    func testVPNMissingConfig() {
-        var profile = SpoofProfile.makeDefault()
-        XCTAssertFalse(profile.isVPNMissingConfig)
-        profile.routeMode = .vpn
-        XCTAssertTrue(profile.isVPNMissingConfig)
-        profile.outlineConfig = OutlineServerConfig(host: "h", port: 1, password: "p", cipher: .aes256Gcm, prefix: nil)
-        XCTAssertFalse(profile.isVPNMissingConfig)
-    }
-
-    func testInheritedVPNConfigComesFromMaster() {
-        var master = SpoofProfile.makeDefault()
-        master.outlineConfig = OutlineServerConfig(host: "h", port: 1, password: "p", cipher: .aes256Gcm, prefix: nil)
-        var vpn = custom("vpn", patterns: ["example.com"])
-        vpn.routeMode = .vpn
-        vpn.inheritOutlineConfig = true
-        settings.profiles = [vpn, master]
-        XCTAssertFalse(settings.matchingProfile(for: "example.com").isVPNMissingConfig)
-    }
 }

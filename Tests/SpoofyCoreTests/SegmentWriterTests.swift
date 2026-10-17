@@ -45,7 +45,7 @@ final class SegmentWriterTests: XCTestCase {
         let conn = FakeConnection(queue: queue)
         let done = expectation(description: "first flight")
         SegmentWriter.writeFirstFlight(.clientHello(record: hello, sniOffset: nil, leftover: leftover),
-                                       profile: profile, to: conn, label: "test") { error in
+                                       desync: DesyncParameters(profile: profile), to: conn, label: "test") { error in
             XCTAssertNil(error)
             done.fulfill()
         }
@@ -58,8 +58,8 @@ final class SegmentWriterTests: XCTestCase {
         let conn = FakeConnection(queue: queue)
         let done = expectation(description: "first flight")
         done.expectedFulfillmentCount = 2
-        SegmentWriter.writeFirstFlight(.raw(Data("SSH-2.0".utf8)), profile: profile, to: conn, label: "test") { _ in
-            SegmentWriter.writeFirstFlight(.empty, profile: profile, to: conn, label: "test") { _ in done.fulfill() }
+        SegmentWriter.writeFirstFlight(.raw(Data("SSH-2.0".utf8)), desync: DesyncParameters(profile: profile), to: conn, label: "test") { _ in
+            SegmentWriter.writeFirstFlight(.empty, desync: DesyncParameters(profile: profile), to: conn, label: "test") { _ in done.fulfill() }
             done.fulfill()
         }
         wait(for: [done], timeout: 2)

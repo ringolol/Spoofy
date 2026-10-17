@@ -2,10 +2,10 @@ import Foundation
 import Network
 import os.log
 
-/// Local HTTP proxy server that accepts connections and dispatches to HTTP/HTTPS handlers.
+/// Local HTTP and SOCKS5 proxy server: accepts connections and runs a `Session` for each.
 ///
 /// Concurrency (plan §6.1): the listener, admission and the session registry live on the serial
-/// `serverQueue`. Each accepted connection gets a `SessionScope` with its own serial queue, and
+/// `serverQueue`. Each accepted connection gets a `Session` with its own serial queue, and
 /// everything that session does runs there. Both target the concurrent `ioRoot`, so sessions
 /// still run in parallel.
 final class ProxyServer {
@@ -18,11 +18,11 @@ final class ProxyServer {
     private let serverQueue: DispatchQueue
     private let resolverCache: DoHResolverCache
     private let dialer: Dialing
-    private let firstByteTimeout: TimeInterval
+    private let limits: Session.Limits
 
     // serverQueue only
     private var listener: NWListener?
-    private var sessions: [UInt64: SessionScope] = [:]
+    private var sessions: [UInt64: Session] = [:]
     private var nextSessionID: UInt64 = 0
 
     /// Called if the listener fails after `start` has already reported its result.
@@ -36,9 +36,9 @@ final class ProxyServer {
 
     init(port: UInt16, settings: AppSettings,
          resolverCache: DoHResolverCache = DoHResolverCache(), dialer: Dialing = ServerConnector(),
-         firstByteTimeout: TimeInterval = 2) {
+         limits: Session.Limits = Session.Limits()) {
         self.requestedPort = port
-        self.firstByteTimeout = firstByteTimeout
+        self.limits = limits
         self.settings = settings
         self.resolverCache = resolverCache
         self.dialer = dialer
@@ -108,7 +108,7 @@ final class ProxyServer {
             let open = Array(self.sessions.values)
             self.sessions.removeAll()
             for session in open {
-                session.queue.async { session.close() }
+                session.queue.async { session.close("proxy stopped") }
             }
             Self.logger.info("Proxy server stopped, closed \(open.count, privacy: .public) sessions")
         }
@@ -125,100 +125,37 @@ final class ProxyServer {
         }
 
         nextSessionID += 1
-        let session = SessionScope(id: nextSessionID, target: ioRoot)
+        // Routing reads the settings per request, so changes apply to the next session.
+        let deps = Session.Dependencies(router: Router(settings: settings), limits: limits,
+                                        dialer: dialer, resolverCache: resolverCache)
+        let session = Session(id: nextSessionID, client: clientConn, target: ioRoot, deps: deps)
         sessions[session.id] = session
         Self.logger.info("Connection opened (active: \(self.sessions.count, privacy: .public))")
 
+        session.onClose = { [weak self] in
+            self?.serverQueue.async {
+                guard let self, self.sessions.removeValue(forKey: session.id) != nil else { return }
+                Self.logger.info("Connection closed (active: \(self.sessions.count, privacy: .public))")
+            }
+        }
         session.queue.async {
-            session.adopt(clientConn)
-            clientConn.stateUpdateHandler = { [weak self] state in
+            session.accept()
+            clientConn.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    // Clear state handler before dispatching to avoid interference
                     clientConn.stateUpdateHandler = nil
-                    self?.readRequest(from: clientConn, session: session)
-                case .failed, .cancelled:
+                    session.clientReady()
+                case .failed(let error):
                     clientConn.stateUpdateHandler = nil
-                    self?.closeSession(session)
+                    session.close("client connection failed: \(error.localizedDescription)")
+                case .cancelled:
+                    clientConn.stateUpdateHandler = nil
+                    session.close("client connection cancelled")
                 default:
                     break
                 }
             }
             clientConn.start(queue: session.queue)
-        }
-    }
-
-    /// Runs on the session's queue. Safe to call more than once.
-    private func closeSession(_ session: SessionScope) {
-        session.close()
-        serverQueue.async {
-            guard self.sessions.removeValue(forKey: session.id) != nil else { return }
-            Self.logger.info("Connection closed (active: \(self.sessions.count, privacy: .public))")
-        }
-    }
-
-    private func readRequest(from clientConn: NWConnection, session: SessionScope) {
-        let closeConnection = { [weak self] in
-            clientConn.cancel()
-            if let self {
-                self.closeSession(session)
-            } else {
-                session.close()
-            }
-        }
-
-        // Read enough for an HTTP request line + headers
-        clientConn.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] content, _, _, error in
-            guard let self = self else {
-                closeConnection()
-                return
-            }
-
-            if let error = error {
-                Self.logger.debug("Read error: \(error.localizedDescription)")
-                closeConnection()
-                return
-            }
-
-            guard let data = content, !data.isEmpty else {
-                closeConnection()
-                return
-            }
-
-            // SOCKS5 greeting starts with version byte 0x05; HTTP always starts with ASCII letter
-            if data[0] == 0x05 {
-                SOCKS5Handler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer,
-                    firstByteTimeout: self.firstByteTimeout)
-                    .handleGreeting(clientConn: clientConn, data: data, completion: closeConnection)
-                return
-            }
-
-            guard let request = HTTPRequestLine.parse(from: data) else {
-                Self.logger.debug("Failed to parse HTTP request")
-                let badRequest = "HTTP/1.1 400 Bad Request\r\n\r\n"
-                clientConn.send(content: badRequest.data(using: .utf8), completion: .contentProcessed { _ in
-                    closeConnection()
-                })
-                return
-            }
-
-            guard request.isValidMethod else {
-                Self.logger.debug("Invalid method: \(request.method)")
-                let notImpl = "HTTP/1.1 501 Not Implemented\r\n\r\n"
-                clientConn.send(content: notImpl.data(using: .utf8), completion: .contentProcessed { _ in
-                    closeConnection()
-                })
-                return
-            }
-
-            if request.isConnect {
-                HTTPSHandler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer,
-                    firstByteTimeout: self.firstByteTimeout)
-                    .handleRequest(clientConn: clientConn, host: request.host, port: request.port, completion: closeConnection)
-            } else {
-                HTTPHandler(session: session, settings: self.settings, resolverCache: self.resolverCache, dialer: self.dialer)
-                    .handleRequest(clientConn: clientConn, request: request, completion: closeConnection)
-            }
         }
     }
 }

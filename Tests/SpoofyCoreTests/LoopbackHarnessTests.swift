@@ -28,7 +28,7 @@ final class LoopbackHarnessTests: XCTestCase {
 
     /// With a `resolver`, DoH is on and every lookup goes to it instead of the network.
     private func startProxy(splitMode: SplitMode, chunkSize: Int = 5, recordFragmentation: Bool = false,
-                            resolver: FakeResolver? = nil) throws -> UInt16 {
+                            resolver: FakeResolver? = nil, handshakeTimeout: TimeInterval = 10) throws -> UInt16 {
         var master = SpoofProfile.makeDefault()
         master.splitMode = splitMode
         master.chunkSize = chunkSize
@@ -42,7 +42,8 @@ final class LoopbackHarnessTests: XCTestCase {
             return resolver
         }
         // Short first-byte timer so the server-first tests (U7) don't wait the production 2 s.
-        let server = ProxyServer(port: 0, settings: settings, resolverCache: resolverCache, firstByteTimeout: 0.3)
+        let server = ProxyServer(port: 0, settings: settings, resolverCache: resolverCache,
+                                 limits: Session.Limits(handshakeTimeout: handshakeTimeout, firstByteTimeout: 0.3))
         let started = expectation(description: "proxy ready")
         let failure = LockedBox<Error?>(nil)
         server.start { error in
@@ -92,7 +93,7 @@ final class LoopbackHarnessTests: XCTestCase {
         let client = try TestClient(port: port)
         try client.send("NOT-HTTP\r\n\r\n")
         let reply = try client.read(through: Self.crlf2)
-        XCTAssertEqual(String(decoding: reply, as: UTF8.self), "HTTP/1.1 400 Bad Request\r\n\r\n")
+        XCTAssertTrue(String(decoding: reply, as: UTF8.self).hasPrefix("HTTP/1.1 400 Bad Request\r\n"))
         XCTAssertTrue(client.waitForClose())
     }
 
@@ -210,9 +211,10 @@ final class LoopbackHarnessTests: XCTestCase {
         let port = try startProxy(splitMode: .none)
         let client = try TestClient(port: port)
         try client.send("CONNECT 127.0.0.1:\(deadPort) HTTP/1.1\r\n\r\n")
-        // mode=none: the 200 goes out before the dial, then the client is dropped.
-        _ = try client.read(through: Self.crlf2)
+        // The tunnel dials before replying, so the refusal is a 502, not 200 and a reset.
         // A refused dial puts NWConnection in .waiting, which the dialer treats as a failure (N11).
+        let reply = try client.read(through: Self.crlf2, timeout: 2)
+        XCTAssertTrue(String(decoding: reply, as: UTF8.self).hasPrefix("HTTP/1.1 502 Bad Gateway\r\n"))
         XCTAssertTrue(client.waitForClose(timeout: 2))
     }
 
@@ -303,7 +305,7 @@ final class LoopbackHarnessTests: XCTestCase {
 
     private func socksTunnel(proxyPort: UInt16, target: SOCKSTarget, originPort: UInt16) throws -> TestClient {
         let client = try TestClient(port: proxyPort)
-        // Wait for the method reply before the request: the current handler can't take them pipelined (N6).
+        // One step at a time, as most clients do; the pipelined form is in `SessionTests` (N6).
         try client.send(Data([0x05, 0x01, 0x00]))
         XCTAssertEqual(try client.read(count: 2), Data([0x05, 0x00]))
         try client.send(target.request(port: originPort))
@@ -379,11 +381,53 @@ final class LoopbackHarnessTests: XCTestCase {
         let head = String(decoding: waitForOrigin(origin, count: 1), as: UTF8.self)
         XCTAssertFalse(head.isEmpty, "the origin got nothing")
 
-        XCTExpectFailure("N9: the absolute-form request is forwarded as-is") {
-            XCTAssertTrue(head.hasPrefix("GET /path?q=1 HTTP/1.1\r\n"), head)
-            XCTAssertFalse(head.lowercased().contains("proxy-connection"), head)
-            XCTAssertTrue(head.contains("\r\nConnection: close\r\n"), head)
-        }
+        XCTAssertTrue(head.hasPrefix("GET /path?q=1 HTTP/1.1\r\n"), head)
+        XCTAssertFalse(head.lowercased().contains("proxy-connection"), head)
+        XCTAssertTrue(head.contains("\r\nConnection: close\r\n"), head)
+    }
+
+    /// N9: a head longer than one read, and sent in pieces, still parses.
+    func testLongPlainHTTPHeadSplitAcrossWrites() throws {
+        let origin = try startOrigin(.recordAll)
+        let port = try startProxy(splitMode: .none)
+        let client = try TestClient(port: port)
+        let request = "GET http://127.0.0.1:\(origin.port)/ HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+            + "Cookie: \(String(repeating: "c", count: 20_000))\r\n\r\n"
+        let bytes = Data(request.utf8)
+        try client.send(bytes.prefix(10_000))
+        usleep(50_000)
+        try client.send(bytes.dropFirst(10_000))
+        let head = String(decoding: waitForOrigin(origin, count: bytes.count - 4), as: UTF8.self)
+        XCTAssertTrue(head.hasPrefix("GET / HTTP/1.1\r\n"), String(head.prefix(40)))
+        XCTAssertTrue(head.hasSuffix("Connection: close\r\n\r\n"))
+    }
+
+    // MARK: - Handshake deadline (N8) and pipelining (N6)
+
+    func testSilentClientIsClosedByTheHandshakeDeadline() throws {
+        let port = try startProxy(splitMode: .sni, handshakeTimeout: 0.3)
+        let client = try TestClient(port: port)
+        XCTAssertTrue(client.waitForClose(timeout: 2))
+        XCTAssertTrue(eventually(timeout: 2) { self.proxy?.activeSessionCount == 0 })
+    }
+
+    func testPartialClientHelloIsClosedByTheDeadline() throws {
+        let origin = try startOrigin(.recordAll)
+        let port = try startProxy(splitMode: .sni, handshakeTimeout: 0.3)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port)
+        // A TLS header announcing a record that never completes.
+        try client.send(Fixtures.tls13ClientHello.prefix(8))
+        XCTAssertTrue(client.waitForClose(timeout: 2))
+        XCTAssertEqual(origin.received, Data(), "nothing is forwarded from a half ClientHello")
+    }
+
+    func testSOCKS5PipelinedGreetingRequestAndHello() throws {
+        let origin = try startOrigin(.recordAll)
+        let port = try startProxy(splitMode: .sni)
+        let client = try TestClient(port: port)
+        try client.send(Data([0x05, 0x01, 0x00]) + SOCKSTarget.ipv4.request(port: origin.port) + Fixtures.tls13ClientHello)
+        XCTAssertEqual(try client.read(count: 12), Data([0x05, 0x00, 0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
+        XCTAssertEqual(waitForOrigin(origin, count: Fixtures.tls13ClientHello.count), Fixtures.tls13ClientHello)
     }
 
     // MARK: - Scenario 4: server-first origin over CONNECT

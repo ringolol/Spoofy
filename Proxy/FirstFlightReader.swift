@@ -32,8 +32,10 @@ final class FirstFlightReader {
     }
 
     /// `completion` runs once on `queue`. nil means the client closed or failed before a decision.
-    func read(completion: @escaping (FirstFlight?) -> Void) {
+    /// `initial` is what the client already sent after its handshake (pipelined), fed in first.
+    func read(initial: Data = Data(), completion: @escaping (FirstFlight?) -> Void) {
         self.completion = completion
+        if !initial.isEmpty, decide(reader.feed(initial)) { return }
         queue.asyncAfter(deadline: .now() + firstByteTimeout) { [self] in
             guard self.completion != nil, reader.state == .awaitingHeader, reader.bufferedCount == 0 else { return }
             Self.logger.info("[\(self.label)] no client bytes in \(self.firstByteTimeout)s, relaying without desync")
@@ -61,16 +63,7 @@ final class FirstFlightReader {
                 Self.logger.error("[\(self.label)] first flight read error: \(error.localizedDescription)")
                 return finish(nil)
             }
-            if let data, !data.isEmpty {
-                switch reader.feed(data) {
-                case .needMore:
-                    break
-                case .passthrough(let bytes):
-                    return finish(.raw(bytes))
-                case .clientHello(let record, let sniOffset):
-                    return finish(.clientHello(record: record, sniOffset: sniOffset, leftover: reader.leftover))
-                }
-            }
+            if let data, !data.isEmpty, decide(reader.feed(data)) { return }
             if isComplete {
                 // Half-close before the record was complete: nothing sensible to desync.
                 Self.logger.warning("[\(self.label)] client closed after \(self.reader.bufferedCount) bytes")
@@ -78,6 +71,19 @@ final class FirstFlightReader {
             }
             receiveNext()
         }
+    }
+
+    /// Finishes on a decision; false for `.needMore`.
+    private func decide(_ output: ClientHelloReader.Output) -> Bool {
+        switch output {
+        case .needMore:
+            return false
+        case .passthrough(let bytes):
+            finish(.raw(bytes))
+        case .clientHello(let record, let sniOffset):
+            finish(.clientHello(record: record, sniOffset: sniOffset, leftover: reader.leftover))
+        }
+        return true
     }
 
     private func finish(_ flight: FirstFlight?) {
