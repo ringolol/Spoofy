@@ -61,7 +61,6 @@ Each finding has an ID that later phases refer to.
 | U6 | `HTTPSHandler.swift:44`, `HTTPHandler.swift:32`, `SOCKS5Handler.swift:254` | Route = VPN with `outlineConfig == nil` **falls through to a direct connection**. A user who expects tunnelling gets a direct, DPI-visible connection. | Fail closed: HTTP 502 or SOCKS5 reply `0x01`, plus a log line. The router (§6.5) makes this a single decision point. |
 | U9 | `Spoofy/ProxyManager.swift:40-44` | When the proxy fails to start, the silent audio player keeps running. The app then sits in the background draining battery for nothing. | Stop the audio in the error path. Make `ProxyManager` a small state machine: `idle → starting → running(port) → stopping → idle`, plus `failed(error)`. |
 | U10 | `ProxyServer.swift:46` | The `start` completion is called on **every** listener state change. That includes `.ready` after a network change and `.failed` later on, so `ProxyManager` flips state. | Call the completion once, on the first `.ready` or `.failed`. Report later failures through a separate `onFailure` handler. |
-| U11 | `Spoofy/BackgroundAudioPlayer.swift` | No `AVAudioSession.interruptionNotification` or `mediaServicesWereResetNotification` handling. After a phone call or Siri, the audio stays stopped and iOS suspends the proxy. | Observe both notifications. Resume on `.ended` (ignore `shouldResume`, because the session is silent), and rebuild the player after a media-services reset. |
 
 ### 2.3 Network and protocol robustness (P2)
 
@@ -79,7 +78,6 @@ Each finding has an ID that later phases refer to.
 |----|-------|---------|-----|
 | M1 | `ProxyServer.swift:76-82` | The max-200 check and the increment are not atomic, so with a concurrent queue the limit can overshoot. | Make the admission decision on the server's serial queue (§6.1). |
 | M2 | `ProxyServer.stop()` | The listener is cancelled but active sessions keep running, so "Stop" doesn't stop traffic. | The server keeps a session registry, and `stop()` cancels all sessions. |
-| M3 | `ConnectionRelay` | Logs at debug level on every packet: CPU cost, and it leaks hostnames into the unified log. | Log per session (open, close, bytes, duration) only. Gate the per-packet log behind `#if DEBUG_TRACE`. |
 | M5 | `TLSParser` `Data.readUInt16(at:)` | Assumes zero-based indices and breaks on a `Data` slice. `splitFirstByte` returns `dropFirst` slices, which aren't zero-based. | Index from `startIndex`, or normalise with `Data(slice)` at module boundaries. Add a test that parses a slice. |
 
 ## 3. SpoofDPI comparison (what to port, what not)
@@ -659,6 +657,13 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 - `BackgroundAudioPlayer` handles interruptions (U11).
 - `ContentView` reads the `ProxyManager` state for the port.
 
+**Step 4g status: done.**
+- U11: `BackgroundAudioPlayer` keeps an `isActive` flag between `start()` and `stop()` and observes three notifications on the main queue. On an interruption's `.ended` it reactivates the session and plays again, ignoring `shouldResume`. On `mediaServicesWereReset` it drops the player and builds a new one. On `UIApplication.didBecomeActive` it resumes if the player isn't playing, as a fallback for a `.ended` that never arrives. `play()` reuses the player when `play()` succeeds and otherwise builds a new one.
+- M3: `ConnectionRelay` logs nothing per packet unless built with `DEBUG_TRACE`. Its completion now passes `Stats(bytesFromLeft:bytesFromRight:idleTimedOut:)`. The session's close line, which already had the phase, duration, reason and route, now also gives the bytes up and down, and the reason is "idle timeout" when the relay timed out. `ConnectionRelayTests.testReportsTheBytesEachWay` covers the counts, and `testIdleTimeoutCancelsBoth` covers the flag.
+- **Deviations:**
+  - U11 has no automated test. AVFoundation is outside the core boundary and nothing compiles `Spoofy/` under `swift test`, so the plan's manual gate covers it.
+  - The `.began` reason `.appWasSuspended` is not handled. It is deprecated from iOS 16, the deployment target, and iOS no longer sends it; the `didBecomeActive` fallback covers that case.
+
 ## 7. Phase ordering and deliverables
 
 | Phase | Deliverable | Gate |
@@ -673,7 +678,7 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7. **Done**: see the §6.5 status | §5.2 session tests and harness scenarios 1–5 green |
 | 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, U12, U13, M4, M6. **Done**: see the §6.7 status | Characterization tests decide U3 semantics |
 | 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b). **Done**: see the §6.8 status | Codec KATs and opt-in interop scenario 6 green |
-| 4g | App layer U11, M3 (U12 landed with 4e) | Manual: call interruption test on device |
+| 4g | App layer U11, M3 (U12 landed with 4e). **Done**: see the §6.9 status | Manual: call interruption test on device |
 
 Each row is one PR-sized change. Steps 4a–4c are mechanical and low-risk. Step 4d is the big one, and it lands only when the harness is green against the old handlers, so the harness is the contract.
 

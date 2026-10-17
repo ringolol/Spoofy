@@ -20,7 +20,8 @@ Non-goals:
   sockets, and the kernel TCP stack hides those packets from us. Revisit only if a
   `NEPacketTunnelProvider` mode ever ships.
 - QUIC / UDP. The proxy only carries TCP, so QUIC blocking is invisible (browsers fall back
-  to TCP through the proxy anyway).
+  to TCP through the proxy anyway). The scanner does say what it can't carry: refused SOCKS5
+  UDP / BIND, SOCKS4, malformed requests (§2.5).
 - Persisting the log. It lives in memory only and is never exported.
 - Throughput-based throttling detection in phase 1 (too noisy passively; see §10.4).
 
@@ -213,7 +214,210 @@ var tEnd: TimeInterval?         // endedAt - payloadSentAt
 var bytesUp, bytesDown: Int
 var stall: StallInfo?           // §3
 var retransmitBytes: UInt64?
+var payloadKind: PayloadKind    // §2.5.2
+var applied: AppliedStrategy    // §2.5.3
 ```
+
+### 2.5 Protocol coverage
+
+Spoofy carries a narrow set of protocols, and the scanner has to say so honestly. Otherwise
+it shows misleading results: SSH marked "blocked after hello", a SOCKS4 app that looks like
+a broken site, or UDP traffic that never shows up and leaves the user guessing. Every trace
+records **what came in** (inbound protocol) and **what was inside** (payload kind). The
+classifier, the verdicts, the sheet defaults and the fix finder all branch on these two.
+
+#### 2.5.1 What can reach the proxy today
+
+From `InboundProtocol`, `HTTPHeadParser`, `SOCKS5Parser` and `Session`:
+
+| Client traffic | Reaches Spoofy | Today's behaviour | Scanner shows |
+|---|---|---|---|
+| HTTP `CONNECT host:port` (any port) | yes | dial, `200`, tunnel | host row |
+| Absolute-form `GET http://…` | yes | one request per upstream connection (`Connection: close`) | host row, kind `.http` |
+| SOCKS5 `CONNECT`, no auth; IPv4 / IPv6 / domain | yes | dial, success reply, tunnel | host row (IP row if the client resolved the name itself, §2.5.5) |
+| SOCKS5 username/password auth only | refused | `05 FF`, close | refusal `.socks5AuthRequired` |
+| SOCKS5 `BIND` (0x02) | refused | reply `0x07` | refusal `.socks5Bind` |
+| SOCKS5 `UDP ASSOCIATE` (0x03): QUIC, DNS, calls, games | refused | reply `0x07` | refusal `.socks5UDP` |
+| SOCKS4 / 4a (first byte `0x04`) | **misread** | goes to `HTTPHeadParser`, `400 malformed request line` | refusal `.socks4` (after the §2.5.4 change) |
+| Origin-form `GET /path` (app treats the proxy as a web server) | refused | `400` | refusal `.httpOriginForm` |
+| `GET https://…` absolute form | refused | `400` | refusal `.httpsAbsoluteForm` |
+| HTTP/2 prior knowledge (`PRI * HTTP/2.0`) | refused | `400 malformed request line` | refusal `.http2Preface` |
+| Over the 200-session cap | refused | listener-level close | refusal `.overCapacity` |
+| Router `.reject` (VPN profile without an Outline config) | refused | error reply | refusal `.routeRejected(profileName)` |
+| UDP from apps that don't use SOCKS5 (QUIC, plain DNS, WebRTC) | **never** | — | "can't see" footer (§2.5.6) |
+| Apps that ignore the system proxy (custom network stacks: Telegram MTProto, many games) | **never** | — | "can't see" footer |
+
+Browsers drop QUIC when a proxy is configured, so web traffic arrives as TCP. The gap is
+non-browser apps.
+
+#### 2.5.2 Payload kind (`Diagnostics/PayloadSniffer.swift`, pure)
+
+```swift
+enum InboundKind: String { case connect, httpForward, socks5 }
+
+enum PayloadKind: Equatable {
+    case tls(ClientHelloInfo)           // first record is a ClientHello (§5)
+    case tlsOther                       // 0x16 0x03 but not a parsable ClientHello
+    case http(method: String, host: String?)
+    case ssh                            // "SSH-"
+    case serverFirst(ServerGreeting)    // client silent; server spoke first
+    case unknown(firstBytes: Data)      // ≤ 8 bytes, for the detail view only
+    case none                           // nothing sent either way before the end
+}
+enum ServerGreeting: Equatable { case smtpOrFTP /* "220" */, imap /* "* OK" */, pop3 /* "+OK" */, other }
+```
+
+Where the input comes from (current code):
+
+| Path | Source | Kind |
+|---|---|---|
+| plain-HTTP inbound (`InboundRequest.Kind.http`) | parsed request line | `.http` (no sniffing) |
+| desync tunnel, `FirstFlight.clientHello` | the record | `.tls(info)`, or `.tlsOther` if `ClientHelloInfo` fails |
+| desync tunnel, `FirstFlight.raw(bytes)` | first bytes | `sniff(client:)` |
+| desync tunnel, `FirstFlight.empty` (2 s first-byte timeout) | first server chunk, later | `sniff(server:)` → `.serverFirst`, or `.none` |
+| direct / Shadowsocks tunnel (no `FirstFlightReader`) | first client→server chunk seen by the relay (§3) | `sniff(client:)`; if the server speaks first, `sniff(server:)` |
+
+`sniff(client:)` rules, first match wins:
+1. `0x16 0x03 0x0[0-4]` and `ClientHelloInfo.parse` succeeds → `.tls`. Otherwise `.tlsOther`.
+2. An ASCII token from `GET HEAD POST PUT DELETE OPTIONS PATCH CONNECT TRACE`, then a space →
+   `.http(method, host)`, with `Host:` read if it's in the same chunk.
+3. `SSH-` → `.ssh`.
+4. Else `.unknown(prefix(8))`.
+
+`sniff(server:)` matches `220`, `* OK`, `+OK`, else `.other`. The kind is fixed once it's set.
+A trace sets it once, on the first payload in either direction.
+
+#### 2.5.3 Configured vs applied strategy
+
+`Router` decides before the first flight is read, so a desync profile can match a tunnel
+that turns out not to be TLS. `Session` then relays without desync (`FirstFlight.raw` /
+`.empty`). The trace keeps both:
+
+```swift
+enum AppliedStrategy: Equatable {
+    case desync(DesyncParameters)
+    case passthrough(PassthroughReason)   // reason: .notTLS, .clientSilent, .plainHTTP, .splitNone
+    case shadowsocks
+}
+```
+
+The detail view shows `Split (SNI) configured · not applied: not TLS`. The sheet uses it for
+its warning (§2.5.5).
+
+#### 2.5.4 Refused requests
+
+Today these end in `Session.fail(reply:reason:)` with a free-text `String`, before any
+routing, so nothing about them reaches a trace. Changes:
+
+1. **Structured failure.** `InboundStep.fail(reply:reason:)` carries
+   `InboundFailure` instead of `String`. `description` keeps the existing log text, so the
+   log lines don't change.
+   ```swift
+   enum InboundFailure: Equatable, CustomStringConvertible {
+       case socks5AuthRequired(offered: [UInt8])
+       case socks5Command(UInt8)            // 0x02 bind, 0x03 udp associate
+       case socks5AddressType(UInt8)
+       case socks4
+       case httpOriginForm, httpsAbsoluteForm, http2Preface
+       case headTooLarge
+       case malformed(String)               // everything else keeps its old text
+   }
+   ```
+   `SOCKS5Parser.parseRequest` maps command 2/3 to `.socks5Command`. `HTTPHeadParser` checks
+   for the `PRI * HTTP/2.0` line before the generic malformed check, tells `/path` targets
+   (origin-form) apart from `https://` targets, and returns the specific case.
+2. **SOCKS4 recognised.** `InboundProtocol(firstByte:)` gets `case socks4` for `0x04`. Its
+   parser reads `VN CD DSTPORT DSTIP USERID\0 [HOST\0]`. That's enough to log the target. It
+   then fails with the SOCKS4 reply `00 5B 00 00 00 00 00 00` (request rejected) and
+   `.socks4`. We don't carry SOCKS4. The parser only exists so the refusal names the right
+   cause and the app gets a reply it understands. Supporting it later is about 30 more lines
+   (§2.5.7).
+3. **Logged.** `Session` reports refusals to the log through the same sink as traces:
+   `log.refused(RefusalRecord)`. Route rejects and over-capacity closes report too
+   (`ProxyServer` admission). No `ConnectionTrace` is created for them.
+   ```swift
+   struct RefusalRecord: Sendable {
+       let at: Date
+       let inbound: InboundProtocol         // .http / .socks5 / .socks4
+       let reason: RefusalReason            // InboundFailure + .routeRejected(profileName) + .overCapacity
+       let target: DialTarget?              // when the request got far enough to name one (UDP ASSOCIATE usually sends 0.0.0.0:0)
+   }
+   ```
+   `ConnectionLog` keeps refusals grouped by `reason.groupKey`: count, first and last seen,
+   and the last 5 distinct targets. There's a cap of 32 groups. They're kept apart from host
+   records, so they never touch verdicts or the `NetworkState` thresholds.
+
+Tests: one parser test per refusal case. Feed each one split at every byte boundary, as the
+existing parser tests do. Also a `Session` test over `FakeConnection` that a refusal reaches
+the log sink exactly once.
+
+#### 2.5.5 What the kind changes downstream
+
+| Consumer | `.tls` | `.http` | `.ssh` / `.unknown` / `.tlsOther` | `.serverFirst` | `.none` |
+|---|---|---|---|---|---|
+| Classifier (§4.4) | all rules | R1–R3 (DNS/connect), C rules (block page), H freeze | R1–R3 only, then `inconclusive` | R1–R3, then `inconclusive` | R1–R3, `clientAborted` |
+| Silence after first payload | `helloBlackhole` | `inconclusive` (a slow origin is normal) | `inconclusive` (many protocols wait legitimately) | — | — |
+| Verdict (§6.2) | counts | counts | counts only connect-level outcomes | same | ignored |
+| Row chip (§7.3) | — (default) | `HTTP` | `SSH` / `TCP` | `SMTP`, `IMAP`… / `TCP` | — |
+| Sheet default (§7.4) | as now | Split+None+DoH, or VPN for C | **VPN** if Master has Outline, else no default with "Split modes only change TLS" | same as left | — |
+| Diagnose (§10) | full | D0–D2 + HTTP probe (stretch) | D0–D2 (DNS, TCP connect) | same | — |
+| Fix candidates (§11) | all | DoH, VPN | DoH, VPN | DoH, VPN | — |
+
+Freeze (H) is protocol-agnostic: it's a byte-count cut on the TCP flow. It still applies to
+`.unknown` and `.ssh`, at low confidence, because a long-lived SSH session can just go quiet.
+
+The log keys hosts by host name. Each entry keeps its port and kind, so one host can carry
+`443/TLS` and `5222/unknown` side by side. The verdict comes from the host's TLS and HTTP
+entries when it has any, and from all entries otherwise. The detail view lists every
+port/kind pair.
+
+**IP targets.** SOCKS clients that resolve names themselves (`curl --socks5`, many games)
+send an IP. `Router` matches on `DialTarget.host`, so the rule has to be the IP. A domain
+taken from the SNI won't match those connections. The row shows the SNI as the title with the
+IP underneath. The sheet adds the **IP** (exact), along with the existing note and a hint:
+"Set the app to resolve names through the proxy (SOCKS5h / remote DNS) to use domain rules."
+`DomainMatcher` already matches IPv4 and IPv6 literals exactly, label by label. CIDR isn't
+supported, which is acceptable for now.
+
+#### 2.5.6 UI for refusals
+
+At the bottom of `ScannerView` there's a **Couldn't carry** section, one row per refusal
+group. It's hidden when empty. It isn't selectable and has no profile actions, because a
+rule can't fix any of these.
+
+| Reason | Copy |
+|---|---|
+| `.socks5UDP` | "An app tried to send UDP (calls, games, QUIC). Spoofy only carries TCP. These apps will connect directly or fail." |
+| `.socks5Bind` | "An app asked to accept incoming connections (e.g. FTP active mode). Not supported." |
+| `.socks5AuthRequired` | "An app wants to log in to the proxy. Turn off proxy authentication in that app." |
+| `.socks4` | "An app uses SOCKS4. Switch it to SOCKS5 or HTTP proxy." |
+| `.httpOriginForm` / `.httpsAbsoluteForm` / `.http2Preface` | "An app is talking to Spoofy as if it were a website. Check that it's set to use an *HTTP proxy*, not a server address." |
+| `.routeRejected(name)` | "Profile *name* routes through VPN but has no Outline server." Tapping it opens that profile. |
+| `.overCapacity` | "More than 200 connections at once; some were refused." |
+| `.malformed` | "N requests weren't valid proxy requests." The last reason text appears in the detail view. |
+
+Footer text (always shown): *"Not shown: UDP from apps that don't use SOCKS5 (QUIC, voice
+calls), and apps that ignore the system proxy."*
+
+The main-screen summary line (§7.1b) doesn't count refusals.
+
+#### 2.5.7 What this data decides (not built here)
+
+The refusal counts are how we decide which protocol work is worth doing:
+
+- **SOCKS4a**: a ~30-line parser on top of 2.5.4. Build it if `.socks4` shows up in user
+  reports.
+- **SOCKS5 UDP ASSOCIATE**: a UDP relay with its own session lifetime rules. Desync can't help
+  QUIC, so only `direct` and Shadowsocks-UDP routes would make sense. It's a separate plan, and
+  only worth it if `.socks5UDP` is common.
+- **Routing by SNI for IP targets**: needs the ClientHello before the routing decision. That
+  conflicts with dial-before-reply in `Session` (the success reply has to come before the
+  client sends its hello). A separate plan, if IP-target rows turn out to be common.
+
+**Found while reading, unrelated to the scanner:** `HTTPHeadParser.rewrite` drops
+`Connection` and appends `Connection: close`. That breaks an absolute-form `Upgrade:
+websocket` request, which needs `Connection: Upgrade`. Browsers tunnel `ws://` over CONNECT,
+so the impact is probably small. File it as its own finding.
 
 ## 3. Relay instrumentation
 
@@ -299,6 +503,9 @@ Each outcome also carries `confidence: .low/.medium/.high` and `echPresent: Bool
 `payload.hasECH`), so the UI can say "may be ECH blocking".
 
 ### 4.4 Rules (evaluated in order, first match wins)
+
+Gate first: rules past R3 run only for the payload kinds in the §2.5.5 table. A non-TLS
+tunnel that goes quiet is `inconclusive`, never `helloBlackhole`.
 
 ```
 R0  route == .vpn:
@@ -576,6 +783,8 @@ so the user can still switch freely after opening.
     same wildcard syntax via `matchesPatterns`) for noise like telemetry.
   - The list footer shows "Hidden (N)", which opens an editable list.
 - Toolbar menu: Clear log.
+- Protocol chip on non-TLS rows (`HTTP`, `SSH`, `SMTP`, `TCP`). The **Couldn't carry**
+  section and the "not shown" footer go at the end of the list (§2.5.6).
 
 ### 7.4 `AddPatternsSheet` (`Spoofy/AddPatternsSheet.swift`)
 
@@ -801,7 +1010,8 @@ Candidate order (cheapest / least invasive first):
 5. `random`, `random+rec`
 6. `vpn` (only if Master has an Outline config)
 
-For IP/whitelist diagnoses, skip straight to `vpn` (splitting can't help).
+For IP/whitelist diagnoses, skip straight to `vpn` (splitting can't help). For non-TLS
+payload kinds only DoH and `vpn` are candidates (§2.5.5).
 
 ## 12. Two-stage search
 
@@ -869,6 +1079,13 @@ Unit tests (pure code, fixture-driven):
 - `ClientHelloBuilder`: parses back, 517 bytes, SNI offset correct, splits with every
   `SplitMode` without crashing.
 - `BaseDomain`, `AppSettings.matchingProfile(for:in:)`, AddPatterns simulation warnings.
+- `PayloadSniffer`: each kind from real first bytes (TLS hellos, HTTP methods, `SSH-2.0`,
+  `220 `, `* OK`, random bytes, truncated TLS header).
+- Refusals (§2.5.4): `SOCKS5Parser` commands 2/3, auth-only greeting, address type; SOCKS4 and
+  4a requests; origin-form, `https://`, `PRI *` and over-long heads in `HTTPHeadParser`. Each
+  split at every byte boundary. A `Session` test that each refusal reaches the log sink once.
+- Classifier gating: a non-TLS tunnel with silence after its first payload → `inconclusive`;
+  configured desync + raw first flight → `applied == .passthrough(.notTLS)`.
 
 Local behaviour tests (no Russia needed): a small Python test server (kept out of the repo)
 with modes:
@@ -921,6 +1138,9 @@ blocked sites.
 - **URLSession HTTPS proxy keys on iOS.** Unverified, spike before building phase 3 UI.
 - **Lists that go stale.** `blockPageHosts`, `whitelistSNIs` and the control host need
   maintenance. Keep them in one file and consider fetching them remotely later.
+- **Protocol blind spots.** UDP from apps that don't use SOCKS5 and apps that ignore the
+  system proxy never reach Spoofy. The footer says so; nothing more can be done without a
+  packet tunnel.
 - **Privacy.** The log holds host names and SNIs in memory only. Never written to disk or
   included in export, and Clear wipes it. Payloads aren't kept beyond a 128-byte server
   prefix.
@@ -931,7 +1151,8 @@ blocked sites.
    `makeCustom`. Regression-test bypass behaviour.
 2. `SpoofyTests` target. `TLSParser` info parsers + tests.
 3. `ConnectionTrace` + `ConnectionLog` + handler hooks + relay instrumentation (stall
-   detector, reports).
+   detector, reports). `PayloadSniffer`, `AppliedStrategy`, then `InboundFailure` + SOCKS4
+   recognition + refusal records (§2.5).
 4. `TraceClassifier`, `HostVerdict`, `NetworkState` + fixture tests.
 5. `ScannerSnapshot`, `ScannerModel`, `ScannerView`, `HostDetailView`, `AddPatternsSheet`,
    hidden-hosts list. Then the entry points: toolbar icon, `ProxyManager.logSummary` + main

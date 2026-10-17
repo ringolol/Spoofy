@@ -75,6 +75,7 @@ final class Session {
     private var parser: InboundParser?
     private var request: InboundRequest?
     private var decision: RouteDecision?
+    private var relayStats: ConnectionRelay.Stats?
     private var deadlineGeneration = 0
 
     convenience init(id: UInt64, client: any ConnectionProtocol, target: DispatchQueue, deps: Dependencies) {
@@ -128,7 +129,8 @@ final class Session {
         scope.close()
         let seconds = Double(DispatchTime.now().uptimeNanoseconds - startedAt.uptimeNanoseconds) / 1e9
         let route = decision.map { "\($0.outbound)" } ?? "-"
-        Self.logger.info("[\(self.label, privacy: .public)] closed in \(reached.rawValue, privacy: .public) after \(String(format: "%.1f", seconds), privacy: .public)s: \(reason, privacy: .public) (route \(route, privacy: .public))")
+        let traffic = relayStats.map { ", \($0.bytesFromLeft) B up, \($0.bytesFromRight) B down" } ?? ""
+        Self.logger.info("[\(self.label, privacy: .public)] closed in \(reached.rawValue, privacy: .public) after \(String(format: "%.1f", seconds), privacy: .public)s: \(reason, privacy: .public) (route \(route, privacy: .public)\(traffic, privacy: .public))")
         let onClose = self.onClose
         self.onClose = nil
         onClose?()
@@ -266,8 +268,9 @@ final class Session {
         guard phase != .closed else { return }
         phase = .relaying
         ConnectionRelay.relay(left: client, right: upstream, label: label, queue: queue,
-                              idleTimeout: deps.limits.idleTimeout, firstLeftReceive: firstClientReceive) { [self] in
-            close("relay finished")
+                              idleTimeout: deps.limits.idleTimeout, firstLeftReceive: firstClientReceive) { [self] stats in
+            relayStats = stats
+            close(stats.idleTimedOut ? "idle timeout" : "relay finished")
         }
     }
 

@@ -5,12 +5,15 @@ import XCTest
 final class ConnectionRelayTests: XCTestCase {
     private let queue = DispatchQueue(label: "ConnectionRelayTests")
 
+    private var stats: ConnectionRelay.Stats?
+
     private func relay(_ left: FakeConnection, _ right: FakeConnection,
                        idleTimeout: Double = 120, idleCheckInterval: DispatchTimeInterval = .seconds(15)) -> XCTestExpectation {
         let done = expectation(description: "relay completion")
         done.assertForOverFulfill = true
         ConnectionRelay.relay(left: left, right: right, queue: queue,
-                              idleTimeout: idleTimeout, idleCheckInterval: idleCheckInterval) {
+                              idleTimeout: idleTimeout, idleCheckInterval: idleCheckInterval) { [self] stats in
+            self.stats = stats
             done.fulfill()
         }
         return done
@@ -49,6 +52,14 @@ final class ConnectionRelayTests: XCTestCase {
         XCTAssertEqual(left.sent, [Data("pong".utf8)])
     }
 
+    // M3: the session logs one line with the byte counts instead of one per packet.
+    func testReportsTheBytesEachWay() {
+        let left = FakeConnection(queue: queue, script: [data("ping"), data("bye"), .eof])
+        let right = FakeConnection(queue: queue, script: [data("pong!")])
+        wait(for: [relay(left, right)], timeout: 2)
+        XCTAssertEqual(stats, ConnectionRelay.Stats(bytesFromLeft: 7, bytesFromRight: 5, idleTimedOut: false))
+    }
+
     func testReadErrorCancelsTheOtherSide() {
         let left = FakeConnection(queue: queue, script: [.error(.posix(.ECONNRESET))])
         let right = FakeConnection(queue: queue)
@@ -75,6 +86,7 @@ final class ConnectionRelayTests: XCTestCase {
         wait(for: [relay(left, right, idleTimeout: 0.05, idleCheckInterval: .milliseconds(20))], timeout: 2)
         XCTAssertTrue(left.cancelled)
         XCTAssertTrue(right.cancelled)
+        XCTAssertEqual(stats?.idleTimedOut, true)
     }
 
     func testTrafficKeepsTheRelayAlive() {
