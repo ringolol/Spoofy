@@ -31,6 +31,14 @@ final class RouterTests: XCTestCase {
         }
     }
 
+    func testLogDescriptionHidesTheOutlinePassword() {
+        let config = OutlineServerConfig(host: "203.0.113.5", port: 8388, password: "s3cret", cipher: .aes256Gcm,
+                                         prefix: Data("PFX".utf8))
+        let text = "\(OutboundKind.shadowsocks(config))"
+        XCTAssertEqual(text, "shadowsocks(203.0.113.5:8388)")
+        XCTAssertFalse(String(describing: OutboundKind.shadowsocks(config)).contains("s3cret"))
+    }
+
     func testEverySplitModeButNoneDesyncs() {
         for mode in SplitMode.allCases where mode != .none {
             guard case .desync(let parameters) = Router.outbound(for: profile(split: mode), kind: .tunnel) else {

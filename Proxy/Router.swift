@@ -29,6 +29,18 @@ enum OutboundKind: Equatable {
     case reject(reason: String)
 }
 
+/// Log form: names the Outline server but never its password or prefix.
+extension OutboundKind: CustomStringConvertible {
+    var description: String {
+        switch self {
+        case .direct: return "direct"
+        case .desync(let p): return "desync(\(p.mode.rawValue), chunk \(p.chunkSize)\(p.recordFragmentation ? ", records" : ""))"
+        case .shadowsocks(let config): return "shadowsocks(\(config.host):\(config.port))"
+        case .reject(let reason): return "reject(\(reason))"
+        }
+    }
+}
+
 struct RouteDecision {
     /// The matched profile, with Master's inherited settings applied.
     let profile: SpoofProfile
