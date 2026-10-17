@@ -72,6 +72,9 @@ final class TestClient {
         }
     }
 
+    /// Non-blocking: has the peer closed the connection yet?
+    var isClosedByPeer: Bool { lock.withLock { eof } }
+
     func close() { conn.cancel() }
 
     private func take(what: String, timeout: TimeInterval, length: (Data) -> Int?) throws -> Data {

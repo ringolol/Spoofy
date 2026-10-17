@@ -63,20 +63,10 @@ final class ConnectionRelayTests: XCTestCase {
         let left = FakeConnection(queue: queue, script: [data("hello")])
         let right = FakeConnection(queue: queue)
         right.sendError = .posix(.EPIPE)
-        let finished = LockedFlag()
-        ConnectionRelay.relay(left: left, right: right, queue: queue) { _ = finished.setIfFalse() }
-
-        let settled = expectation(description: "settled")
-        queue.asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
-        wait(for: [settled], timeout: 2)
-
+        wait(for: [relay(left, right)], timeout: 2)
         XCTAssertTrue(left.cancelled)
+        XCTAssertTrue(right.cancelled)
         XCTAssertEqual(right.sent, [])
-        XCTExpectFailure("N14: write error leaves the other direction running") {
-            XCTAssertTrue(right.cancelled)
-            XCTAssertFalse(finished.setIfFalse(), "relay should have completed")
-        }
-        right.cancel()
     }
 
     func testIdleTimeoutCancelsBoth() {

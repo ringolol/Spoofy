@@ -9,10 +9,14 @@ final class SOCKS5Handler {
 
     private let settings: AppSettings
     private let resolverCache: DoHResolverCache
+    private let session: SessionScope
+    /// The session's serial queue: every connection, timer and callback of this session runs here.
     private let queue: DispatchQueue
 
-    init(queue: DispatchQueue, settings: AppSettings, resolverCache: DoHResolverCache) {
-        self.queue = queue
+    /// One handler per session; its callbacks keep it alive until the session ends.
+    init(session: SessionScope, settings: AppSettings, resolverCache: DoHResolverCache) {
+        self.session = session
+        self.queue = session.queue
         self.settings = settings
         self.resolverCache = resolverCache
     }
@@ -264,6 +268,7 @@ final class SOCKS5Handler {
             Self.logger.info("[\(host)] SOCKS5 VPN mode")
             let connectVPN = { (targetHost: String) in
                 ShadowsocksStream.connect(config: outlineConfig, targetHost: targetHost, targetPort: port, queue: self.queue) { stream in
+                    if let stream { self.session.adopt(stream) }
                     guard let stream = stream else {
                         Self.logger.error("[\(host)] Failed to connect to Outline server")
                         self.sendReply(to: clientConn, rep: 0x01) {
@@ -281,7 +286,7 @@ final class SOCKS5Handler {
                 }
             }
             if let resolver = dohResolver {
-                resolver.resolve(domain: host) { ips in
+                resolver.resolve(domain: host, on: self.queue) { ips in
                     let resolved = ips?.first ?? host
                     if resolved != host { Self.logger.debug("[\(host)] DoH resolved to \(resolved)") }
                     connectVPN(resolved)
@@ -500,7 +505,7 @@ final class SOCKS5Handler {
 
     private func resolveAndConnect(host: String, port: UInt16, dohResolver: DoHResolver?, completion: @escaping (NWConnection?) -> Void) {
         if let resolver = dohResolver {
-            resolver.resolve(domain: host) { ips in
+            resolver.resolve(domain: host, on: self.queue) { ips in
                 let targetHost: NWEndpoint.Host
                 if let ip = ips?.first {
                     Self.logger.debug("[\(host)] DoH resolved to \(ip)")
@@ -522,11 +527,9 @@ final class SOCKS5Handler {
         tcpOptions.noDelay = true
         let params = NWParameters(tls: nil, tcp: tcpOptions)
         params.preferNoProxies = true
-        return NWConnection(
-            host: host,
-            port: NWEndpoint.Port(rawValue: port)!,
-            using: params
-        )
+        let conn = NWConnection(host: host, port: NWEndpoint.Port(rawValue: port)!, using: params)
+        session.adopt(conn)
+        return conn
     }
 
     private func waitForReady(conn: NWConnection, host: String, completion: @escaping (NWConnection?) -> Void) {

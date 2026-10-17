@@ -21,10 +21,13 @@ final class LoopbackOrigin {
     private var connections: [NWConnection] = []
     private var _received = Data()
     private var _acceptCount = 0
+    private var _closedCount = 0
 
     /// Everything received, across all connections, in arrival order.
     var received: Data { lock.withLock { _received } }
     var acceptCount: Int { lock.withLock { _acceptCount } }
+    /// Connections whose peer (the proxy) closed or reset them.
+    var closedCount: Int { lock.withLock { _closedCount } }
 
     init(_ behaviour: Behaviour) throws {
         self.behaviour = behaviour
@@ -75,6 +78,7 @@ final class LoopbackOrigin {
                 }
             }
             if isComplete || error != nil {
+                self.lock.withLock { self._closedCount += 1 }
                 conn.cancel()
                 return
             }

@@ -21,7 +21,15 @@ final class DoHResolver {
     }
 
     /// Resolve a domain to IP addresses. Returns cached results when available.
-    func resolve(domain: String, completion: @escaping ([String]?) -> Void) {
+    /// `completion` always runs asynchronously on `queue` (the caller's session queue).
+    func resolve(domain: String, on queue: DispatchQueue, completion: @escaping ([String]?) -> Void) {
+        resolve(domain: domain) { ips in
+            queue.async { completion(ips) }
+        }
+    }
+
+    /// Calls `completion` on the caller's thread for a cache hit, otherwise on a URLSession queue.
+    private func resolve(domain: String, completion: @escaping ([String]?) -> Void) {
         // Check cache first
         if let cached = cache.get(domain: domain) {
             completion(cached)

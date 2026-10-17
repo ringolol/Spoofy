@@ -190,7 +190,6 @@ Expected-failure ledger. Each item flips to a passing test when its fix lands; r
 | U8 | `TLSDesyncerTests.testSNIModeHonoursRecordFragmentation` | `XCTExpectFailure` |
 | N2 | `OutlineAccessKeyTests.testPrefixLongerThanSaltIsRejected` | `XCTExpectFailure` |
 | N13 | `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes` | `XCTExpectFailure` |
-| N14 | `ConnectionRelayTests.testWriteErrorStopsTheRelay` | `XCTExpectFailure` |
 | U7 | `LoopbackHarnessTests.testServerFirstBannerReachesClientInSplitMode`, `testNonTLSClientFirstBytesPassThroughInSplitMode` | `XCTExpectFailure` |
 | U8 | `LoopbackHarnessTests.testSNIModeWithRecordFragmentationSendsSeveralRecords` (end-to-end twin of the unit test) | `XCTExpectFailure` |
 | N9 | `LoopbackHarnessTests.testPlainHTTPIsRewrittenToOriginForm` | `XCTExpectFailure` |
@@ -316,7 +315,7 @@ Test ──NWConnection──▶ ProxyServer(127.0.0.1:0) ──▶ LoopbackOrig
 - Scenario 2: SOCKS5 echo for domain (`localhost`), IPv4 and IPv6 targets; the hello is delivered unchanged; `0x07` for BIND; `0xFF` with no acceptable method. The client waits for the method reply before sending the request (N6 is a §5.2 fake-connection test).
 - Scenario 3: the absolute-form request reaches the origin and the response comes back; the origin-form rewrite is N9 (expected failure).
 - Scenario 4: the banner arrives in mode `none`; in split modes it doesn't, and non-TLS first bytes stall (U7). A first write under 5 bytes stalls in both CONNECT and SOCKS5 (N15).
-- Scenarios 5 (connection cap, `stop()`) and 6 (Shadowsocks interop) are written with 4a and 4f respectively, since both depend on those changes.
+- Scenario 5 landed with 4a: `testConnectionCapAdmitsExactly200` (250 clients, exactly 50 refused, freed slots re-admit), `testStopClosesSessionsInEveryPhase` (relaying, idle and mid-SOCKS5 sessions all close, and so does the upstream), `testSessionSlotIsReleasedWhenClientCloses`. Scenario 6 (Shadowsocks interop) comes with 4f.
 
 ## 6. Phase 4 — refactor design
 
@@ -335,6 +334,13 @@ let sessionQueue = DispatchQueue(label: "spoofy.session.\(id)", target: ioRoot) 
 - The pool is still concurrent across sessions, because the serial queues target the concurrent root.
 - `ProxyServer` admission (`activeCount < 200`), the registry (`[SessionID: Session]`) and `stop()` all run on `serverQueue` (M1, M2). A session reports `onClose` back to the server with `serverQueue.async`.
 - Rule enforced by review: no `DispatchQueue.global()`, and no captured state touched off its owner queue. Add `dispatchPrecondition(condition: .onQueue(queue))` at the session's entry points in debug builds.
+
+**Step 4a status: done.**
+- `ProxyServer`: `ioRoot` (concurrent) → `serverQueue` (serial: listener, admission, `[UInt64: SessionScope]` registry, `stop()`). `AtomicCounter` is gone; the count is `sessions.count`, read and written only on `serverQueue` (M1). `stop()` cancels the listener synchronously, then closes every session on its own queue (M2). `activeSessionCount` is exposed for tests.
+- `SessionScope` (`Proxy/SessionScope.swift`) is the interim session object: a serial queue plus the connections the session opened. Handlers are now created per session, start every `NWConnection` and `ShadowsocksStream` on its queue, and `adopt` each one; adopting into a closed scope cancels at once, which covers `stop()` during a dial. It's folded into `Session` in 4d.
+- `DoHResolver.resolve(domain:on:)` delivers on the session queue, so the code after a DoH lookup no longer runs on a URLSession thread.
+- N14 fixed in `ConnectionRelay.pipe`.
+- **Not done in 4a**, deliberately: removing `LockedFlag` / `LastActivity` locking, and `dispatchPrecondition` at handler entry points. The handlers still have paths the plan deletes in 4d, and the locks are harmless on a serial queue, so they go with the handlers. `ShadowsocksStream.connect` still ignores `.waiting` and has no timeout; that is the `Dialer` (4b).
 
 ### 6.2 `Dialer` (shared with network-scanner §1 `ServerConnector`)
 
@@ -621,7 +627,7 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 1 | Root `Package.swift` (`SpoofyCore` + `SpoofyCoreTests`) and `make test` = `swift test` | Smoke KAT passes on macOS; the Xcode app build is unchanged |
 | 2 | §5.1 unit tests (with expected failures for open bugs) and `FakeConnection` relay tests. **Done**: see the §5.1 status | Green |
 | 3 | Loopback harness (§5.3). `ProxyServer` exposes its port; config injected (resolver with 4b). **Done**: see the §5.3 status | Scenarios 1–4 green against the **current** handlers |
-| 4a | Serial session queues (§6.1), M1, M2, N14 | All tests green |
+| 4a | Serial session queues (§6.1), M1, M2, N14. **Done**: see the §6.1 status | All tests green |
 | 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11 | Green; network-scanner §1 is unblocked |
 | 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15 | Expected-failures for U7, N7, U8 and N15 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7 | §5.2 session tests and harness scenarios 1–5 green |

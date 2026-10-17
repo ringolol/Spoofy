@@ -29,6 +29,7 @@
 		BE8C26D69618E16F5A2EBA03 /* TLSParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0007 /* TLSParser.swift */; };
 		CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0004 /* HTTPHandler.swift */; };
 		FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0002 /* ProxyServer.swift */; };
+		5E5510000000000000000001 /* SessionScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5510000000000000000002 /* SessionScope.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		7FE364DF2F6BAC66004F5832 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOCKS5Handler.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0002 /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
+		5E5510000000000000000002 /* SessionScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionScope.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0003 /* HTTPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPParser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0004 /* HTTPHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPHandler.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0005 /* HTTPSHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPSHandler.swift; sourceTree = "<group>"; };
@@ -120,6 +122,7 @@
 			children = (
 				7FE521992F749F3300F0BA0C /* SOCKS5Handler.swift */,
 				AA00000200000001AABB0002 /* ProxyServer.swift */,
+				5E5510000000000000000002 /* SessionScope.swift */,
 				AA00000200000001AABB0003 /* HTTPParser.swift */,
 				AA00000200000001AABB0004 /* HTTPHandler.swift */,
 				AA00000200000001AABB0005 /* HTTPSHandler.swift */,
@@ -242,6 +245,7 @@
 				7FE5219A2F749F3300F0BA0C /* SOCKS5Handler.swift in Sources */,
 				9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */,
 				FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */,
+				5E5510000000000000000001 /* SessionScope.swift in Sources */,
 				449947202C32DB536E9EF6D1 /* HTTPParser.swift in Sources */,
 				CD5FD9224B8A6EB7C5DB25C1 /* HTTPHandler.swift in Sources */,
 				9542604D3D1E3F43F900321B /* HTTPSHandler.swift in Sources */,

@@ -106,8 +106,9 @@ final class ConnectionRelay {
                 dest.send(content: data, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { sendError in
                     if let sendError = sendError {
                         logger.debug("\(label) write error: \(sendError.localizedDescription)")
-                
+                        // Cancel both: the opposite pipe is parked in receive on `dest` (N14).
                         source.cancel()
+                        dest.cancel()
                         completion()
                         return
                     }

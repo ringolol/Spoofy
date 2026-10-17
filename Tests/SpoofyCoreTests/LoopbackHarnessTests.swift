@@ -358,4 +358,89 @@ final class LoopbackHarnessTests: XCTestCase {
             XCTAssertEqual(got, line)
         }
     }
+
+    // MARK: - Scenario 5: connection cap and stop()
+
+    /// Polls `condition` every 10 ms until it holds or the deadline passes; returns its final value.
+    private func eventually(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            usleep(10_000)
+        }
+        return condition()
+    }
+
+    /// Each idle client costs two descriptors in this process (client side and proxy side).
+    /// GUI-launched test runners can start with a soft limit of 256.
+    private func raiseFileDescriptorLimit(to wanted: rlim_t) {
+        var limit = rlimit()
+        guard getrlimit(RLIMIT_NOFILE, &limit) == 0, limit.rlim_cur < wanted else { return }
+        limit.rlim_cur = min(wanted, limit.rlim_max)
+        setrlimit(RLIMIT_NOFILE, &limit)
+    }
+
+    func testConnectionCapAdmitsExactly200() throws {
+        raiseFileDescriptorLimit(to: 4096)
+        let port = try startProxy(splitMode: .sni)
+        let cap = ProxyServer.maxConcurrentConnections
+        let clients = try (0..<(cap + 50)).map { _ in try TestClient(port: port) }
+
+        XCTAssertTrue(eventually { clients.filter(\.isClosedByPeer).count == 50 },
+                      "closed: \(clients.filter(\.isClosedByPeer).count)")
+        XCTAssertEqual(proxy?.activeSessionCount, cap)
+        // No late admissions or extra rejections after things settle.
+        usleep(200_000)
+        XCTAssertEqual(clients.filter(\.isClosedByPeer).count, 50)
+        XCTAssertEqual(proxy?.activeSessionCount, cap)
+
+        // Closing admitted clients frees their slots.
+        clients.filter { !$0.isClosedByPeer }.prefix(10).forEach { $0.close() }
+        XCTAssertTrue(eventually { self.proxy?.activeSessionCount == cap - 10 })
+        let late = try TestClient(port: port)
+        XCTAssertFalse(late.waitForClose(timeout: 0.3), "a freed slot should admit a new client")
+
+        proxy?.stop()
+        // The 10 closed locally see their own cancel as EOF too, so every client ends up closed.
+        XCTAssertTrue(eventually { clients.allSatisfy(\.isClosedByPeer) },
+                      "stop() should close every admitted client")
+        XCTAssertTrue(late.waitForClose())
+    }
+
+    func testStopClosesSessionsInEveryPhase() throws {
+        let origin = try startOrigin(.echo)
+        let port = try startProxy(splitMode: .sni)
+
+        // Relaying: a CONNECT tunnel with an upstream connection.
+        let relaying = try connectTunnel(proxyPort: port, originPort: origin.port)
+        try relaying.send(Fixtures.tls12ClientHello)
+        _ = try relaying.read(count: Fixtures.tls12ClientHello.count)
+        // Idle: connected, never sent a byte.
+        let idle = try TestClient(port: port)
+        // Mid-handshake: SOCKS5 greeting answered, no request yet.
+        let handshaking = try TestClient(port: port)
+        try handshaking.send(Data([0x05, 0x01, 0x00]))
+        XCTAssertEqual(try handshaking.read(count: 2), Data([0x05, 0x00]))
+
+        XCTAssertTrue(eventually { self.proxy?.activeSessionCount == 3 })
+        proxy?.stop()
+
+        XCTAssertTrue(relaying.waitForClose(), "relaying client")
+        XCTAssertTrue(idle.waitForClose(), "idle client")
+        XCTAssertTrue(handshaking.waitForClose(), "handshaking client")
+        XCTAssertTrue(eventually { origin.closedCount == 1 }, "the upstream connection should be closed too")
+        XCTAssertEqual(proxy?.activeSessionCount, 0)
+        XCTAssertNil(proxy?.port, "the listener should be gone")
+    }
+
+    func testSessionSlotIsReleasedWhenClientCloses() throws {
+        let origin = try startOrigin(.echo)
+        let port = try startProxy(splitMode: .none)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port)
+        try client.send("hello origin")
+        _ = try client.read(count: 12)
+        XCTAssertEqual(proxy?.activeSessionCount, 1)
+        client.close()
+        XCTAssertTrue(eventually { self.proxy?.activeSessionCount == 0 })
+        XCTAssertTrue(eventually { origin.closedCount == 1 })
+    }
 }

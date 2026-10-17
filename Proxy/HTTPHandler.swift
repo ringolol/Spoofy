@@ -8,10 +8,14 @@ final class HTTPHandler {
 
     private let settings: AppSettings
     private let resolverCache: DoHResolverCache
+    private let session: SessionScope
+    /// The session's serial queue: every connection, timer and callback of this session runs here.
     private let queue: DispatchQueue
 
-    init(queue: DispatchQueue, settings: AppSettings, resolverCache: DoHResolverCache) {
-        self.queue = queue
+    /// One handler per session; its callbacks keep it alive until the session ends.
+    init(session: SessionScope, settings: AppSettings, resolverCache: DoHResolverCache) {
+        self.session = session
+        self.queue = session.queue
         self.settings = settings
         self.resolverCache = resolverCache
     }
@@ -43,6 +47,7 @@ final class HTTPHandler {
             Self.logger.info("[\(host)] VPN mode, connecting via Outline...")
             let connectVPN = { (targetHost: String) in
                 ShadowsocksStream.connect(config: outlineConfig, targetHost: targetHost, targetPort: port, queue: self.queue) { stream in
+                    if let stream { self.session.adopt(stream) }
                     guard let stream = stream else {
                         Self.logger.error("[\(host)] Failed to connect to Outline server")
                         clientConn.cancel()
@@ -66,7 +71,7 @@ final class HTTPHandler {
                 }
             }
             if let resolver = dohResolver {
-                resolver.resolve(domain: host) { ips in
+                resolver.resolve(domain: host, on: self.queue) { ips in
                     connectVPN(ips?.first ?? host)
                 }
             } else {
@@ -104,7 +109,7 @@ final class HTTPHandler {
 
     private func resolveAndConnect(host: String, port: UInt16, dohResolver: DoHResolver?, completion: @escaping (NWConnection?) -> Void) {
         if let resolver = dohResolver {
-            resolver.resolve(domain: host) { ips in
+            resolver.resolve(domain: host, on: self.queue) { ips in
                 let targetHost: NWEndpoint.Host
                 if let ip = ips?.first {
                     targetHost = NWEndpoint.Host(ip)
@@ -125,11 +130,9 @@ final class HTTPHandler {
         tcpOptions.noDelay = true
         let params = NWParameters(tls: nil, tcp: tcpOptions)
         params.preferNoProxies = true
-        return NWConnection(
-            host: host,
-            port: NWEndpoint.Port(rawValue: port)!,
-            using: params
-        )
+        let conn = NWConnection(host: host, port: NWEndpoint.Port(rawValue: port)!, using: params)
+        session.adopt(conn)
+        return conn
     }
 
     private func waitForReady(conn: NWConnection, completion: @escaping (NWConnection?) -> Void) {
