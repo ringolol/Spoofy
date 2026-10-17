@@ -67,6 +67,7 @@ Each finding has an ID that later phases refer to.
 | U10 | `ProxyServer.swift:46` | The `start` completion is called on **every** listener state change. That includes `.ready` after a network change and `.failed` later on, so `ProxyManager` flips state. | Call the completion once, on the first `.ready` or `.failed`. Report later failures through a separate `onFailure` handler. |
 | U11 | `Spoofy/BackgroundAudioPlayer.swift` | No `AVAudioSession.interruptionNotification` or `mediaServicesWereResetNotification` handling. After a phone call or Siri, the audio stays stopped and iOS suspends the proxy. | Observe both notifications. Resume on `.ended` (ignore `shouldResume`, because the session is silent), and rebuild the player after a media-services reset. |
 | U12 | `Spoofy/ContentView.swift:27` | Shows `settings.proxyPort`, not the port that is actually listening. After the user edits the port without restarting, the UI is wrong. | Display `ProxyManager.state.running(port)`. |
+| U13 | `ProxyServer` / `Session` | Found on device after 4d. The route is chosen once per connection, and a rule change affects only new connections. Safari keeps an active HTTP/2 tunnel open indefinitely, so after a rule is disabled (or enabled) the site keeps its old route — e.g. 2ip.io still shows the Outline IP — until Stop/Start. | On `server.update(config)`, re-route each live session's target with the new snapshot and close those whose `OutboundKind` changed; the browser reconnects and gets the new route. Sessions whose route is unchanged stay open. Test: `ProxyServerTests.testConfigUpdateClosesSessionsWhoseRouteChanged`. |
 
 ### 2.3 Network and protocol robustness (P2)
 
@@ -625,7 +626,7 @@ struct ProxyConfig: Sendable {          // immutable, built from SettingsStore
 }
 ```
 
-- `ProxyServer.init(config: ProxyConfig, dialer:, resolver:)`. When settings change while running, `ProxyManager` calls `server.update(config)`, which swaps the config on `serverQueue`. New sessions use the new snapshot; existing ones keep theirs.
+- `ProxyServer.init(config: ProxyConfig, dialer:, resolver:)`. When settings change while running, `ProxyManager` calls `server.update(config)`, which swaps the config on `serverQueue`. New sessions use the new snapshot. Existing sessions are re-routed against it, and those whose `OutboundKind` changed are closed (U13); the rest keep theirs.
 - `AppSettings.shared` stays as a thin deprecated forwarder until every call site has moved, then it is deleted.
 - Migration: keep the current UserDefaults keys and JSON shape. The store reads the same format, so no user data migration is needed. Add `isMaster` with a decode default: the profile whose `id` equals today's master id, or the last profile, which matches today's implicit behaviour, once.
 
@@ -658,7 +659,7 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11. **Done**: see the §6.2 status | Green; network-scanner §1 is unblocked |
 | 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15. **Done**: see the §6.3 status | Expected-failures for U7, N7, U8 and N15 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7. **Done**: see the §6.5 status | §5.2 session tests and harness scenarios 1–5 green |
-| 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, M4, M6 | Characterization tests decide U3 semantics |
+| 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, U13, M4, M6 | Characterization tests decide U3 semantics |
 | 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b) | Codec KATs and opt-in interop scenario 6 green |
 | 4g | App layer U11, U12, M3 | Manual: call interruption test on device |
 
