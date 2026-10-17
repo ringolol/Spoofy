@@ -14,7 +14,7 @@ let package = Package(
             // source is excluded explicitly (otherwise SwiftPM warns about it).
             exclude: [
                 "Spoofy", "Spoofy.xcodeproj", "Tests", "Docs", "plans", "altstore", "build",
-                "LICENSE", "Makefile", "README.md", "config.yml", "docker-compose.yml",
+                "CLAUDE.md", "LICENSE", "Makefile", "README.md", "config.yml", "docker-compose.yml",
                 "redis.conf", "icon.png", "icon_macos.png",
             ],
             sources: ["Proxy", "TLS", "DNS", "Shadowsocks", "Shared"]
