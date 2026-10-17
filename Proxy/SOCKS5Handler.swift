@@ -250,6 +250,15 @@ final class SOCKS5Handler {
         let profile = settings.matchingProfile(for: host)
         let dohResolver = resolverCache.resolver(for: profile)
 
+        if profile.isVPNMissingConfig {
+            Self.logger.error("[\(host)] VPN route has no Outline config, rejecting")
+            sendReply(to: clientConn, rep: 0x02) { // connection not allowed by ruleset
+                clientConn.cancel()
+                completion()
+            }
+            return
+        }
+
         // VPN mode
         if profile.routeMode == .vpn, let outlineConfig = profile.outlineConfig {
             Self.logger.info("[\(host)] SOCKS5 VPN mode")

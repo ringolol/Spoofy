@@ -29,7 +29,11 @@ final class DoHResolver {
         }
 
         // Build DNS query for A record
-        let query = buildDNSQuery(domain: domain, qtype: 1) // A record
+        guard let query = buildDNSQuery(domain: domain, qtype: 1) else { // A record
+            Self.logger.error("Invalid domain name for DNS query: \(domain)")
+            completion(nil)
+            return
+        }
         let encoded = query.base64URLEncoded()
 
         var urlString = serverURL
@@ -80,7 +84,15 @@ final class DoHResolver {
     // MARK: - DNS Wire Format
 
     /// Build a minimal DNS query in wire format.
-    private func buildDNSQuery(domain: String, qtype: UInt16) -> Data {
+    /// Returns nil when the name can't be encoded (empty, label > 63 bytes, name > 253 bytes).
+    func buildDNSQuery(domain: String, qtype: UInt16) -> Data? {
+        let labels = domain.split(separator: ".").map { Array($0.utf8) }
+        guard !labels.isEmpty,
+              labels.allSatisfy({ $0.count <= 63 }),
+              labels.reduce(labels.count - 1, { $0 + $1.count }) <= 253 else {
+            return nil
+        }
+
         var data = Data()
 
         // Transaction ID (random)
@@ -97,9 +109,9 @@ final class DoHResolver {
         data.appendUInt16(0)
 
         // Question: domain name
-        for label in domain.split(separator: ".") {
+        for label in labels {
             data.append(UInt8(label.count))
-            data.append(contentsOf: label.utf8)
+            data.append(contentsOf: label)
         }
         data.append(0) // Root label
 

@@ -17,6 +17,9 @@ final class ProxyServer {
     private let proxyQueue = DispatchQueue(label: "com.rnglol.Spoofy.proxy", qos: .userInitiated, attributes: .concurrent)
     private let resolverCache = DoHResolverCache()
 
+    /// Called if the listener fails after `start` has already reported its result.
+    var onFailure: ((Error) -> Void)?
+
     init(port: UInt16, settings: AppSettings) {
         self.port = port
         self.settings = settings
@@ -25,6 +28,8 @@ final class ProxyServer {
         self.socks5Handler = SOCKS5Handler(queue: proxyQueue, settings: settings, resolverCache: resolverCache)
     }
 
+    /// `completion` is called exactly once: nil on the first `.ready`, or the startup error.
+    /// Later listener failures go to `onFailure`.
     func start(completion: @escaping (Error?) -> Void) {
         let tcpOptions = NWProtocolTCP.Options()
         tcpOptions.noDelay = true
@@ -43,15 +48,22 @@ final class ProxyServer {
             return
         }
 
+        let startReported = LockedFlag()
         listener?.stateUpdateHandler = { state in
             switch state {
             case .ready:
+                // .ready can repeat (e.g. after .waiting on a network change); report it once.
+                guard startReported.setIfFalse() else { return }
                 let addr = self.settings.allowLANAccess ? "0.0.0.0" : "127.0.0.1"
                 Self.logger.info("Proxy listening on \(addr):\(self.port)")
                 completion(nil)
             case .failed(let error):
                 Self.logger.error("Listener failed: \(error.localizedDescription)")
-                completion(error)
+                if startReported.setIfFalse() {
+                    completion(error)
+                } else {
+                    self.onFailure?(error)
+                }
             case .cancelled:
                 Self.logger.info("Listener cancelled")
             default:

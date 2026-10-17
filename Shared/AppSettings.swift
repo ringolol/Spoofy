@@ -97,6 +97,12 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
     var inheritDoH: Bool
     var inheritOutlineConfig: Bool
 
+    /// VPN route without a server config. Such connections must be rejected rather than
+    /// silently sent direct, which would expose them to DPI. Call on a resolved profile.
+    var isVPNMissingConfig: Bool {
+        routeMode == .vpn && outlineConfig == nil
+    }
+
     static func makeDefault() -> SpoofProfile {
         SpoofProfile(
             id: UUID(),
@@ -174,8 +180,8 @@ final class AppSettings {
 
     private let defaults: UserDefaults
 
-    init() {
-        defaults = .standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         defaults.register(defaults: [
             "proxyPort": 8090,
             "allowLANAccess": false,
@@ -230,16 +236,14 @@ final class AppSettings {
 
     func matchingProfile(for host: String) -> SpoofProfile {
         let h = host.lowercased()
-        for profile in profiles where profile.isEnabled {
-            if profile.domainPatterns.isEmpty {
-                return resolvedProfile(profile)
-            }
+        // Only Master is a catch-all. A custom profile with no patterns matches nothing,
+        // so a freshly added (still empty) profile can't take over all traffic.
+        for profile in profiles where profile.isEnabled && !profile.isDefault {
             if Self.matchesPatterns(host: h, patterns: profile.domainPatterns) {
                 return resolvedProfile(profile)
             }
         }
-        // Fallback: return default profile (should always be present)
-        return profiles.last ?? SpoofProfile.makeDefault()
+        return masterProfile
     }
 
     func exportJSON() -> String? {

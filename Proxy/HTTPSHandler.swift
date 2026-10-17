@@ -28,6 +28,16 @@ final class HTTPSHandler {
 
         Self.logger.info("[\(host)] CONNECT \(host):\(port) clientState=\(String(describing: clientConn.state))")
 
+        if profile.isVPNMissingConfig {
+            Self.logger.error("[\(host)] VPN route has no Outline config, rejecting")
+            let badGateway = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+            clientConn.send(content: badGateway.data(using: .utf8), completion: .contentProcessed { _ in
+                clientConn.cancel()
+                completion()
+            })
+            return
+        }
+
         // Step 1: Send "200 Connection Established" to client
         let response = "HTTP/1.1 200 Connection Established\r\n\r\n"
         clientConn.send(content: response.data(using: .utf8), contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { [self] error in

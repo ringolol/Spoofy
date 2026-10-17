@@ -28,6 +28,16 @@ final class HTTPHandler {
 
         Self.logger.info("HTTP \(request.method) -> \(host):\(port)")
 
+        if profile.isVPNMissingConfig {
+            Self.logger.error("[\(host)] VPN route has no Outline config, rejecting")
+            let badGateway = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"
+            clientConn.send(content: badGateway.data(using: .utf8), completion: .contentProcessed { _ in
+                clientConn.cancel()
+                completion()
+            })
+            return
+        }
+
         // VPN mode: route through Outline/Shadowsocks server
         if profile.routeMode == .vpn, let outlineConfig = profile.outlineConfig {
             Self.logger.info("[\(host)] VPN mode, connecting via Outline...")

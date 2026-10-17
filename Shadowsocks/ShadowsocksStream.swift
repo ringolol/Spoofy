@@ -13,8 +13,7 @@ final class ShadowsocksStream: ConnectionProtocol {
     private let masterKey: Data
     private let cipher: ShadowsocksCipher
     private let prefix: Data?
-    private let targetHost: String
-    private let targetPort: UInt16
+    private let addressHeader: Data
     private let queue: DispatchQueue
 
     // Send state
@@ -43,16 +42,14 @@ final class ShadowsocksStream: ConnectionProtocol {
         masterKey: Data,
         cipher: ShadowsocksCipher,
         prefix: Data?,
-        targetHost: String,
-        targetPort: UInt16,
+        addressHeader: Data,
         queue: DispatchQueue
     ) {
         self.underlying = underlying
         self.masterKey = masterKey
         self.cipher = cipher
         self.prefix = prefix
-        self.targetHost = targetHost
-        self.targetPort = targetPort
+        self.addressHeader = addressHeader
         self.queue = queue
     }
 
@@ -65,6 +62,12 @@ final class ShadowsocksStream: ConnectionProtocol {
         queue: DispatchQueue,
         completion: @escaping (ShadowsocksStream?) -> Void
     ) {
+        guard let addressHeader = encodeTargetAddress(host: targetHost, port: targetPort) else {
+            logger.error("Target host too long for Shadowsocks address header: \(targetHost.utf8.count) bytes")
+            completion(nil)
+            return
+        }
+
         let keyLen = ShadowsocksCrypto.keyLength(for: config.cipher)
 
         // Outline uses base64-encoded PSK directly — NOT EVP_BytesToKey.
@@ -95,8 +98,7 @@ final class ShadowsocksStream: ConnectionProtocol {
                     masterKey: masterKey,
                     cipher: config.cipher,
                     prefix: config.prefix,
-                    targetHost: targetHost,
-                    targetPort: targetPort,
+                    addressHeader: addressHeader,
                     queue: queue
                 )
                 logger.info("Connected to Outline server \(config.host):\(config.port) for \(targetHost):\(targetPort)")
@@ -149,7 +151,7 @@ final class ShadowsocksStream: ConnectionProtocol {
             // Build payload: prepend target address on first payload
             var payload: Data
             if !addressSent {
-                payload = encodeTargetAddress() + plaintext
+                payload = addressHeader + plaintext
                 addressSent = true
             } else {
                 payload = plaintext
@@ -311,7 +313,8 @@ final class ShadowsocksStream: ConnectionProtocol {
     /// - IPv4:   [0x01][4 bytes][port big-endian]
     /// - Domain: [0x03][len][domain bytes][port big-endian]
     /// - IPv6:   [0x04][16 bytes][port big-endian]
-    private func encodeTargetAddress() -> Data {
+    /// Returns nil for an empty domain or one longer than 255 bytes (the length is a single byte).
+    static func encodeTargetAddress(host targetHost: String, port targetPort: UInt16) -> Data? {
         var addr = Data()
         let portBytes = Data([UInt8(targetPort >> 8), UInt8(targetPort & 0xFF)])
 
@@ -325,6 +328,7 @@ final class ShadowsocksStream: ConnectionProtocol {
             withUnsafeBytes(of: &ipv6Addr) { addr.append(contentsOf: $0) }
         } else {
             let domainBytes = Array(targetHost.utf8)
+            guard (1...255).contains(domainBytes.count) else { return nil }
             addr.append(0x03)
             addr.append(UInt8(domainBytes.count))
             addr.append(contentsOf: domainBytes)
