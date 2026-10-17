@@ -6,7 +6,7 @@ A DPI (Deep Packet Inspection) bypass tool for iOS and macOS. Inspired by [Spoof
 
 Spoofy is a local HTTP/SOCKS5 proxy that bypasses Deep Packet Inspection by fragmenting TLS ClientHello packets or routing selected domains through an Outline server.
 
-> ⚠️ This project is fully vibe-coded.
+> Built with AI coding agents. I designed the app, researched the DPI bypass techniques and verified the behaviour on real devices.
 
 ## Features
 
@@ -22,7 +22,7 @@ Spoofy is a local HTTP/SOCKS5 proxy that bypasses Deep Packet Inspection by frag
 
 - **No system-wide VPN** — Spoofy is a local proxy, not a VPN. On iOS you can use it via [Wi-Fi proxy settings](#setting-up-wi-fi-proxy-on-iphone) or from an app that supports HTTP/SOCKS5 proxies (like Telegram). Cellular traffic is not covered. See [App Store & VPN Mode](#app-store--vpn-mode) for why.
 - **No official App Store release** — you must sideload the app yourself or use the [AltStore source](#altstore). See [App Store & VPN Mode](#app-store--vpn-mode) for details.
-- **Vibe-coded** — most of the code has never been reviewed by a human. Testing has been limited to running on a physical device and WireShark packet inspection. Use at your own risk.
+- **Limited testing** — verified on physical iOS/macOS devices and with Wireshark packet inspection; no formal security audit. Use at your own risk.
 
 ---
 
