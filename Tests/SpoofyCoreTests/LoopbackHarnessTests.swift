@@ -8,10 +8,12 @@ import XCTest
 final class LoopbackHarnessTests: XCTestCase {
     private var proxy: ProxyServer?
     private var origins: [LoopbackOrigin] = []
+    private var shadowsocksServers: [LoopbackShadowsocksServer] = []
 
     override func tearDown() {
         proxy?.stop()
         origins.forEach { $0.stop() }
+        shadowsocksServers.forEach { $0.stop() }
         super.tearDown()
     }
 
@@ -465,15 +467,6 @@ final class LoopbackHarnessTests: XCTestCase {
 
     // MARK: - Scenario 5: connection cap and stop()
 
-    /// Polls `condition` every 10 ms until it holds or the deadline passes; returns its final value.
-    private func eventually(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() && Date() < deadline {
-            usleep(10_000)
-        }
-        return condition()
-    }
-
     /// Each idle client costs two descriptors in this process (client side and proxy side).
     /// GUI-launched test runners can start with a soft limit of 256.
     private func raiseFileDescriptorLimit(to wanted: rlim_t) {
@@ -546,6 +539,99 @@ final class LoopbackHarnessTests: XCTestCase {
         client.close()
         XCTAssertTrue(eventually { self.proxy?.activeSessionCount == 0 })
         XCTAssertTrue(eventually { origin.closedCount == 1 })
+    }
+
+    // MARK: - Scenario 6: the VPN route
+
+    /// Master on the VPN route through `server`.
+    private static func vpnConfig(_ server: OutlineServerConfig) -> ProxyConfig {
+        var master = SpoofProfile.makeDefault()
+        master.routeMode = .vpn
+        master.outlineConfig = server
+        return ProxyConfig(profiles: [master], port: 0, allowLANAccess: false)
+    }
+
+    private func startShadowsocksServer() throws -> LoopbackShadowsocksServer {
+        let server = try LoopbackShadowsocksServer()
+        shadowsocksServers.append(server)
+        return server
+    }
+
+    func testVPNRouteEchoRoundTrip() throws {
+        let origin = try startOrigin(.echo)
+        let server = try startShadowsocksServer()
+        let port = try startProxy(Self.vpnConfig(server.config))
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port)
+        try client.send(Fixtures.tls13ClientHello)
+        XCTAssertEqual(try client.read(count: Fixtures.tls13ClientHello.count), Fixtures.tls13ClientHello,
+                       "the VPN route doesn't desync, so the hello arrives in one piece")
+        // Several AEAD chunks each way.
+        let big = Data((0..<100_000).map { UInt8(truncatingIfNeeded: $0) })
+        try client.send(big)
+        XCTAssertEqual(try client.read(count: big.count), big)
+        XCTAssertEqual(server.targets, ["127.0.0.1:\(origin.port)"])
+    }
+
+    /// Without DoH the domain goes to the server in the address header, unresolved.
+    func testVPNRouteSendsTheDomainInTheHeader() throws {
+        let origin = try startOrigin(.echo)
+        let server = try startShadowsocksServer()
+        let port = try startProxy(Self.vpnConfig(server.config))
+        let client = try socksTunnel(proxyPort: port, target: .domain("localhost"), originPort: origin.port)
+        try client.send("hello")
+        XCTAssertEqual(try client.read(count: 5), Data("hello".utf8))
+        XCTAssertEqual(server.targets, ["localhost:\(origin.port)"])
+    }
+
+    /// N4: the server learns the target without client data, so a server-first protocol works.
+    func testVPNRouteServerFirstBannerReachesClient() throws {
+        let banner = Data("220 smtp.example ESMTP\r\n".utf8)
+        let origin = try startOrigin(.serverFirst(banner))
+        let server = try startShadowsocksServer()
+        let port = try startProxy(Self.vpnConfig(server.config))
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port)
+        XCTAssertEqual(try client.read(count: banner.count, timeout: 2), banner)
+        try client.send("EHLO me\r\n")
+        XCTAssertTrue(eventually { origin.received == Data("EHLO me\r\n".utf8) })
+    }
+
+    /// Plain HTTP writes the request as soon as the server is connected, so it rides with the
+    /// header in one write instead of after it.
+    func testVPNRouteCoalescesTheHeaderWithTheFirstClientData() throws {
+        let origin = try startOrigin(.echo)
+        let server = try startShadowsocksServer()
+        let port = try startProxy(Self.vpnConfig(server.config))
+        let client = try TestClient(port: port)
+        let request = plainHTTPRequest(originPort: origin.port)
+        try client.send(request)
+        _ = try client.read(through: Self.crlf2)
+        // Salt, then the length frame and the payload frame of a 7-byte IPv4 header.
+        let headerOnly = 32 + (2 + ShadowsocksCrypto.tagLength) + (7 + ShadowsocksCrypto.tagLength)
+        XCTAssertGreaterThan(try XCTUnwrap(server.firstReadSizes.first), headerOnly)
+    }
+
+    /// Opt-in interop with a real server (plan §5.3 scenario 6), for example
+    /// `docker run --rm -p 8388:8388 ghcr.io/shadowsocks/ssserver-rust ssserver -s 0.0.0.0:8388 -m chacha20-ietf-poly1305 -k pw`
+    /// with `SPOOFY_SS_TEST_KEY=ss://…@127.0.0.1:8388`. The server reaches the local origin as
+    /// `SPOOFY_SS_TEST_ORIGIN_HOST` (default `host.docker.internal`).
+    func testInteropWithARealShadowsocksServer() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let key = env["SPOOFY_SS_TEST_KEY"] else { throw XCTSkip("set SPOOFY_SS_TEST_KEY to run") }
+        let originHost = env["SPOOFY_SS_TEST_ORIGIN_HOST"] ?? "host.docker.internal"
+        let config = try OutlineAccessKey.decode(key)
+
+        let echo = try startOrigin(.echo)
+        let banner = Data("220 interop ESMTP\r\n".utf8)
+        let serverFirst = try startOrigin(.serverFirst(banner))
+        let port = try startProxy(Self.vpnConfig(config))
+
+        let client = try connectTunnel(proxyPort: port, originPort: echo.port, host: originHost)
+        let big = Data((0..<100_000).map { UInt8(truncatingIfNeeded: $0 &* 7) })
+        try client.send(big)
+        XCTAssertEqual(try client.read(count: big.count, timeout: 10), big)
+
+        let quiet = try connectTunnel(proxyPort: port, originPort: serverFirst.port, host: originHost)
+        XCTAssertEqual(try quiet.read(count: banner.count, timeout: 5), banner, "N4")
     }
 
     // MARK: - U13: a settings change reaches open connections

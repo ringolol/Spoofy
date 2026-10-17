@@ -2,6 +2,22 @@ import Foundation
 
 /// Parses Shadowsocks `ss://` URIs (SIP002 and legacy formats) into OutlineServerConfig.
 enum OutlineAccessKey {
+    enum ParseError: Error, Equatable, CustomStringConvertible {
+        case notAnAccessKey
+        case unsupportedCipher(String)
+        case invalidPrefix
+        /// outline-sdk rejects a prefix longer than the salt ("prefix is too long", N2).
+        case prefixTooLong(Int, max: Int)
+
+        var description: String {
+            switch self {
+            case .notAnAccessKey: return "Invalid access key"
+            case .unsupportedCipher(let method): return "Unsupported cipher \"\(method)\" (use chacha20-ietf-poly1305 or aes-256-gcm)"
+            case .invalidPrefix: return "Invalid prefix: every character must be in U+0000…U+00FF"
+            case .prefixTooLong(let count, let max): return "Prefix is \(count) bytes; at most \(max) are allowed"
+            }
+        }
+    }
 
     /// Parses an `ss://` URI into an OutlineServerConfig.
     ///
@@ -9,22 +25,27 @@ enum OutlineAccessKey {
     /// - **SIP002**: `ss://BASE64URL(method:password)@host:port/?query#fragment`
     /// - **Legacy**: `ss://BASE64(method:password@host:port)#fragment`
     ///
-    /// Query params: `prefix=<url-encoded bytes>`, `outline=1`
-    static func parse(_ uri: String) -> OutlineServerConfig? {
+    /// Query params: `prefix=<url-encoded code points>`, `outline=1`
+    static func decode(_ uri: String) throws -> OutlineServerConfig {
         let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.lowercased().hasPrefix("ss://") else { return nil }
+        guard trimmed.lowercased().hasPrefix("ss://") else { throw ParseError.notAnAccessKey }
         let body = String(trimmed.dropFirst(5))
 
         // Split off fragment (#name)
         let (mainPart, _) = splitFragment(body)
 
         // Try SIP002 first, then legacy
-        return parseSIP002(mainPart) ?? parseLegacy(mainPart)
+        guard let config = try parseSIP002(mainPart) ?? parseLegacy(mainPart) else { throw ParseError.notAnAccessKey }
+        return config
+    }
+
+    static func parse(_ uri: String) -> OutlineServerConfig? {
+        try? decode(uri)
     }
 
     // MARK: - SIP002
 
-    private static func parseSIP002(_ input: String) -> OutlineServerConfig? {
+    private static func parseSIP002(_ input: String) throws -> OutlineServerConfig? {
         // SIP002: base64url(method:password)@host:port/?query
         // Find the last '@' to split userinfo from host (password could contain '@' in theory)
         guard let atIndex = input.lastIndex(of: "@") else { return nil }
@@ -33,7 +54,7 @@ enum OutlineAccessKey {
         let hostPart = String(input[input.index(after: atIndex)...])
 
         // Decode userinfo (base64url-encoded "method:password")
-        guard let decoded = base64URLDecode(userinfoPart),
+        guard let decoded = Data(base64URLEncodedLenient: userinfoPart),
               let userinfoString = String(data: decoded, encoding: .utf8) else {
             return nil
         }
@@ -43,14 +64,16 @@ enum OutlineAccessKey {
         let method = String(userinfoString[userinfoString.startIndex..<colonIndex])
         let password = String(userinfoString[userinfoString.index(after: colonIndex)...])
 
-        guard let cipher = ShadowsocksCipher(rawValue: method) else { return nil }
+        guard let cipher = ShadowsocksCipher(rawValue: method) else { throw ParseError.unsupportedCipher(method) }
 
         // Parse host:port and optional query string
         let (hostPort, query) = splitQuery(hostPart)
         guard let (host, port) = parseHostPort(hostPort) else { return nil }
 
         // Parse query params
-        let prefix = parsePrefix(from: query)
+        let prefix = try parsePrefix(from: query)
+        let maxPrefix = ShadowsocksCrypto.saltLength(for: cipher)
+        if let prefix, prefix.count > maxPrefix { throw ParseError.prefixTooLong(prefix.count, max: maxPrefix) }
 
         return OutlineServerConfig(
             host: host,
@@ -63,12 +86,12 @@ enum OutlineAccessKey {
 
     // MARK: - Legacy
 
-    private static func parseLegacy(_ input: String) -> OutlineServerConfig? {
+    private static func parseLegacy(_ input: String) throws -> OutlineServerConfig? {
         // Legacy: base64(method:password@host:port)
         // Strip any query string first
         let (mainPart, _) = splitQuery(input)
 
-        guard let decoded = base64Decode(mainPart),
+        guard let decoded = Data(base64URLEncodedLenient: mainPart),
               let decodedString = String(data: decoded, encoding: .utf8) else {
             return nil
         }
@@ -83,7 +106,7 @@ enum OutlineAccessKey {
         let method = String(credentials[credentials.startIndex..<colonIndex])
         let password = String(credentials[credentials.index(after: colonIndex)...])
 
-        guard let cipher = ShadowsocksCipher(rawValue: method) else { return nil }
+        guard let cipher = ShadowsocksCipher(rawValue: method) else { throw ParseError.unsupportedCipher(method) }
         guard let (host, port) = parseHostPort(hostPortStr) else { return nil }
 
         return OutlineServerConfig(
@@ -138,64 +161,45 @@ enum OutlineAccessKey {
         return (host, port)
     }
 
-    private static func parsePrefix(from query: String?) -> Data? {
+    /// Like outline-sdk (`url.Query().Get("prefix")`, then `configurl.parseStringPrefix`): the
+    /// value is query-unescaped to a UTF-8 string and each code point becomes one byte, so
+    /// `%C2%A8` (U+00A8) is the byte 0xA8 (N13). A code point above U+00FF is an error.
+    private static func parsePrefix(from query: String?) throws -> Data? {
         guard let query = query else { return nil }
-        // Parse query params manually
-        let pairs = query.split(separator: "&", omittingEmptySubsequences: true)
-        for pair in pairs {
-            let kv = pair.split(separator: "=", maxSplits: 1)
-            guard kv.count == 2, kv[0] == "prefix" else { continue }
-            let value = String(kv[1])
-            return urlDecodeBytes(value)
+        for pair in query.split(separator: "&", omittingEmptySubsequences: true) {
+            let kv = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard queryUnescape(kv[0]).flatMap({ String(bytes: $0, encoding: .utf8) }) == "prefix" else { continue }
+            guard let bytes = queryUnescape(kv.count == 2 ? kv[1] : ""),
+                  let text = String(bytes: bytes, encoding: .utf8) else { throw ParseError.invalidPrefix }
+            var prefix = Data()
+            for scalar in text.unicodeScalars {
+                guard scalar.value <= 0xFF else { throw ParseError.invalidPrefix }
+                prefix.append(UInt8(scalar.value))
+            }
+            return prefix
         }
         return nil
     }
 
-    /// URL-decodes a string into raw bytes. Percent-encoded bytes (%HH) are decoded
-    /// to their byte values; other characters are encoded as UTF-8.
-    private static func urlDecodeBytes(_ input: String) -> Data {
+    /// Go's `url.QueryUnescape`: `%HH` is a byte, `+` is a space, anything else is its UTF-8.
+    /// A malformed escape is an error.
+    private static func queryUnescape(_ input: Substring) -> Data? {
         var result = Data()
-        var i = input.startIndex
-        while i < input.endIndex {
-            if input[i] == "%" {
-                let hi = input.index(after: i)
-                let lo = input.index(after: hi)
-                guard hi < input.endIndex, lo < input.endIndex,
-                      let byte = UInt8(String(input[hi...lo]), radix: 16) else {
-                    result.append(contentsOf: Array(String(input[i]).utf8))
-                    i = input.index(after: i)
-                    continue
-                }
+        var bytes = Array(input.utf8)[...]
+        while let byte = bytes.popFirst() {
+            switch byte {
+            case UInt8(ascii: "%"):
+                let digits = bytes.prefix(2)
+                guard digits.count == 2, digits.allSatisfy({ Character(Unicode.Scalar($0)).isHexDigit }),
+                      let value = UInt8(String(decoding: digits, as: UTF8.self), radix: 16) else { return nil }
+                result.append(value)
+                bytes = bytes.dropFirst(2)
+            case UInt8(ascii: "+"):
+                result.append(UInt8(ascii: " "))
+            default:
                 result.append(byte)
-                i = input.index(after: lo)
-            } else {
-                result.append(contentsOf: Array(String(input[i]).utf8))
-                i = input.index(after: i)
             }
         }
         return result
-    }
-
-    // MARK: - Base64
-
-    private static func base64URLDecode(_ input: String) -> Data? {
-        var base64 = input
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        // Add padding if needed
-        let remainder = base64.count % 4
-        if remainder != 0 {
-            base64.append(String(repeating: "=", count: 4 - remainder))
-        }
-        return Data(base64Encoded: base64)
-    }
-
-    private static func base64Decode(_ input: String) -> Data? {
-        var padded = input
-        let remainder = padded.count % 4
-        if remainder != 0 {
-            padded.append(String(repeating: "=", count: 4 - remainder))
-        }
-        return Data(base64Encoded: padded)
     }
 }

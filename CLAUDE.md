@@ -31,15 +31,16 @@ Proxy/              proxy core
   ConnectionRelay.swift  two pipes with an idle timeout
 TLS/                ClientHello parsing, ClientHelloReader, TLSDesyncer (split modes), PatternMask
 DNS/                DoHResolver (wire format), DNSCache
-Shadowsocks/        AEAD crypto, ShadowsocksStream, OutlineAccessKey (ss:// parsing)
+Shadowsocks/        AEAD crypto, ShadowsocksAEADCodec (framing, no I/O), ShadowsocksStream (I/O), OutlineAccessKey (ss:// parsing)
 Shared/             settings and config
   SpoofProfile.swift  profile model (UserDefaults JSON shape; keep it compatible)
   SettingsStore.swift @MainActor store for the UI
   ProxyConfig.swift   immutable snapshot the network code reads
   DomainMatcher.swift label-wise domain patterns (`example.com`, `*.example.com`, `*.google.*`)
+  Base64.swift        lenient base64 / base64url decoding
 Spoofy/             app layer (SwiftUI): views, ProxyManager, BackgroundAudioPlayer (keep-alive)
 Tests/SpoofyCoreTests/   unit, fake-connection and loopback tests
-  Support/            FakeConnection, FakeResolver, LoopbackOrigin, TestClient, ClientHelloBuilder
+  Support/            FakeConnection, FakeResolver, LoopbackOrigin, LoopbackShadowsocksServer, TestClient, ClientHelloBuilder
 plans/              work plans; code comments cite them (`plan §6.5`, finding IDs `U13`, `N8`)
 altstore/           AltStore sources (*.json tracked) and release builds (ignored)
 Docs/               README screenshots
@@ -73,7 +74,7 @@ xcodebuild build -project Spoofy.xcodeproj -scheme Spoofy \
 - `make install-macos`: Catalyst build into `/Applications` (signs with the team from the project).
 - The proxy can be checked from a shell when it's running: `curl -x http://127.0.0.1:<port> https://example.com` or `curl --socks5-hostname 127.0.0.1:<port> …`.
 - iOS needs a real device and is checked by the user.
-- Outline interop: `docker-compose up -d` starts a local shadowbox.
+- Outline interop: `make test` runs the VPN route against an in-process Shadowsocks server. For a real one, run e.g. `docker run --rm -p 127.0.0.1:8388:8388 ghcr.io/shadowsocks/ssserver-rust ssserver -s 0.0.0.0:8388 -m chacha20-ietf-poly1305 -k <pw>` and `SPOOFY_SS_TEST_KEY=ss://… swift test --filter testInteropWithARealShadowsocksServer`. `docker-compose up -d` starts a shadowbox, but its key has to be provisioned first.
 
 ### Releases
 

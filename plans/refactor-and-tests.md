@@ -68,14 +68,9 @@ Each finding has an ID that later phases refer to.
 | ID | Where | Problem | Fix |
 |----|-------|---------|-----|
 | N1 | `ShadowsocksStream.swift:89-116` | `connect` has no timeout. An unreachable Outline server hangs the client connection until the client gives up. | Use the shared `Dialer` with a 10-second timeout (§6.2). |
-| N2 | `ShadowsocksStream.swift:141-143` | If the prefix is longer than the salt, the salt is extended rather than the prefix truncated, and the server derives the wrong subkey. | Validate when parsing the access key: `prefix.count <= saltSize`, otherwise reject the key with a clear error. Outline itself limits the prefix to the salt length. |
-| N3 | `ShadowsocksStream.swift:70` | The comment says Outline uses a base64 PSK. It doesn't: classic AEAD ciphers use EVP_BytesToKey(password). It only seems right because Outline passwords look like base64. | Fix the comment and pin the behaviour with the KAT in §5.1. |
-| N4 | `ShadowsocksStream` (send path) | The address header goes out only with the first **client** data. Server-first protocols (SMTP, some game and chat protocols) therefore hang over VPN, because the server never learns the target. | Use outline-sdk's `ClientDataWait` behaviour: wait up to 10 ms for the first client data and coalesce, then flush the header alone. |
-| N5 | `ShadowsocksStream` salt generation | The `SecRandomCopyBytes` status is ignored. On failure, the salt is all zeros, so nonces are reused across connections. | Check the status and fail the connection on error. Alternatively, `SystemRandomNumberGenerator` fills the salt, and it cannot fail. |
 | N10 | `DoHResolver` | Queries A records only, so IPv6-only hosts fail. It sends DoH queries for IP literals. Callers use only `ips.first`, so a single dead IP fails the connection. | Skip DoH for IP literals. Query A and AAAA in parallel. Return all addresses; the `Dialer` tries them in order with a 250 ms stagger (SpoofDPI `DialFastest`). |
 | N11 | `HTTPSHandler.waitForReady` (all 3 copies) | `.waiting(error)` is ignored, so an unreachable host waits the full 10 seconds. This was also noted in network-scanner §1. | The `Dialer` treats `.waiting` as a failure for that address and moves to the next one. |
 | N12 | `ConnectionRelay.pipe` | EOF on one side cancels the other immediately, so there is no half-close. This matches SpoofDPI but breaks request/response protocols that half-close (rare over 443). | **Keep the current behaviour** in the refactor, behind a `RelayPolicy.closeOnFirstEOF` default. Note half-close as a possible follow-up. Don't change two things at once. |
-| N13 | `OutlineAccessKey.urlDecodeBytes` | Found in Phase 2. The `prefix=` value is percent-decoded into raw bytes. outline-sdk (`configurl.parseStringPrefix`) instead percent-decodes it into a UTF-8 **string** and maps each code point ≤ 0xFF to one byte. So `%C2%A8` must become the single byte `0xA8`, but Spoofy produces `c2 a8`. Every prefix with a byte ≥ 0x80 is wrong, including the TLS-ClientHello prefix from Outline's prefixing guide (`%16%03%01%00%C2%A8%01%01`). | Percent-decode, UTF-8-decode, then map each scalar to a byte. Reject scalars above 0xFF, as outline-sdk does. Test: `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes`. |
 | N14 | `ConnectionRelay.pipe` (send error path) | Found in Phase 2. On a write error the pipe cancels only its **source**. The opposite pipe stays parked in `receive` on the destination, so the relay doesn't complete and the slot stays held until the 120-second idle timeout. A failed `NWConnection` usually also fails its pending receive, which hides this. A `ShadowsocksStream` destination doesn't. | Cancel both sides on a write error, as the read-error path already does. Test: `ConnectionRelayTests.testWriteErrorStopsTheRelay`. |
 
 ### 2.4 Minor (P3)
@@ -169,12 +164,10 @@ Expected-failure ledger. Each item flips to a passing test when its fix lands; r
 
 | Finding | Test | Mechanism |
 |---------|------|-----------|
-| N2 | `OutlineAccessKeyTests.testPrefixLongerThanSaltIsRejected` | `XCTExpectFailure` |
-| N13 | `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes` | `XCTExpectFailure` |
 | M5 | `TLSParserTests.testParsesFromDataSlice` | `XCTSkipIf`, because it traps |
 
 These items need the seams from later phases, so they are deferred:
-- `ShadowsocksFramingTests` (§6.8).
+- ~~`ShadowsocksFramingTests` (§6.8).~~ Landed with 4f.
 - ~~The §5.2 SOCKS5 and CONNECT session tests (§6.4/6.5).~~ Landed with 4d (`SessionTests`).
 
 **`TLSParserTests`**
@@ -645,6 +638,21 @@ struct ProxyConfig: Sendable {          // immutable, built from SettingsStore
 
 This is also where `plans/outline-websocket-transport.md` attaches: the WebSocket transport becomes another `ConnectionProtocol` under `ShadowsocksStream` (§9).
 
+**Step 4f status: done.**
+- `Shadowsocks/ShadowsocksAEADCodec.swift`: `Encoder(cipher:masterKey:salt:)` with `seal(_:)` (the first call emits the salt; chunks of at most 0x3FFF), `Decoder(cipher:masterKey:)` with `feed(_:) throws -> Data` (the old state machine; poisoned after an error), `makeSalt(cipher:prefix:)`, and `addressHeader(host:port:)` (moved from the stream). `ShadowsocksFramingTests`: chunk boundaries for both ciphers, byte-by-byte and seeded random splits, corrupt length tag, corrupt payload, wrong key, out-of-range length (0, 0x4000, 0xFFFF), salt prefix.
+- `ShadowsocksStream(underlying: any ConnectionProtocol, …)` only does I/O, and `ShadowsocksStreamTests` drive it over `FakeConnection`.
+- N2: `OutlineAccessKey.decode(_:) throws` rejects a prefix longer than the cipher's salt (`ParseError.prefixTooLong`); `parse(_:)` stays as `try? decode`. The access-key field shows the error text. `makeSalt` also refuses one, so a key saved before 4f fails the connect with a log line instead of deriving a wrong subkey.
+- N3: the master key is always `EVP_BytesToKey(password)` (`ShadowsocksStream.masterKey(for:)`). The old code used the password as a raw key when it decoded as exactly 32 bytes of base64, so a 44-character base64-looking password never worked; `testPasswordThatLooksLikeABase64KeyGoesThroughEVPBytesToKey` and the aes-256-gcm interop run pin it.
+- N4: the stream arms a 10 ms `DispatchWorkItem` on the session queue at creation. The first client send takes the header and cancels it; otherwise it fires and sends salt + header alone. `testHeaderGoesAloneWhenTheClientIsSilent`, and `LoopbackHarnessTests.testVPNRouteServerFirstBannerReachesClient`, which times out with the wait set to 100 s.
+- N5: the salt comes from `SystemRandomNumberGenerator`, which can't fail.
+- N13: the prefix is query-unescaped as Go does (`%HH`, `+` is a space, a malformed escape is an error), UTF-8-decoded, and each scalar ≤ U+00FF becomes one byte; anything else is `ParseError.invalidPrefix`.
+- `Shared/Base64.swift`: `Data(base64URLEncodedLenient:)` replaces the three helpers; the legacy `ss://` form now also accepts URL-safe base64.
+- Scenario 6: `Support/LoopbackShadowsocksServer` is a small Shadowsocks server built on the codec (it reads the address header, dials the target and relays), so the VPN route runs end to end in every `make test`: echo with 100 KB each way, the domain in the header, server-first, and header coalescing for plain HTTP. `testInteropWithARealShadowsocksServer` is the opt-in run against a real server (`SPOOFY_SS_TEST_KEY`, origin reached as `SPOOFY_SS_TEST_ORIGIN_HOST`, default `host.docker.internal`). It passed against shadowsocks-rust 1.25.0 in Docker with chacha20-ietf-poly1305 plus the Outline TLS prefix, and with aes-256-gcm plus a 44-character base64 password.
+- **Deviations:**
+  - `Decoder.feed` returns one `Data`, not `[Data]`: the stream concatenates anyway.
+  - The interop run used `ghcr.io/shadowsocks/ssserver-rust` instead of the `docker-compose.yml` shadowbox, which needs its key provisioned through the management API. Any server works through `SPOOFY_SS_TEST_KEY`.
+  - Prefixes stored before 4f keep their old bytes: for a key with an escape ≥ `%80` (such as `%C2%A8`) the stored prefix is the UTF-8 bytes, not the code points. The connection still works (the prefix is only salt bytes), but the disguise differs from what Outline intends until the key is pasted again. There is no migration, because stored bytes can't tell which parser wrote them.
+
 ### 6.9 App layer
 
 - `ProxyManager` state machine (U9, U10, U12): `idle | starting | running(port: UInt16) | stopping | failed(Error)`. Audio starts on entering `running` and stops on leaving it.
@@ -664,7 +672,7 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15. **Done**: see the §6.3 status | Expected-failures for U7, N7, U8 and N15 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7. **Done**: see the §6.5 status | §5.2 session tests and harness scenarios 1–5 green |
 | 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, U12, U13, M4, M6. **Done**: see the §6.7 status | Characterization tests decide U3 semantics |
-| 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b) | Codec KATs and opt-in interop scenario 6 green |
+| 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b). **Done**: see the §6.8 status | Codec KATs and opt-in interop scenario 6 green |
 | 4g | App layer U11, M3 (U12 landed with 4e) | Manual: call interruption test on device |
 
 Each row is one PR-sized change. Steps 4a–4c are mechanical and low-risk. Step 4d is the big one, and it lands only when the harness is green against the old handlers, so the harness is the contract.

@@ -382,11 +382,11 @@ struct ProfileEditView: View {
             accessKeyError = nil
             return
         }
-        if let config = OutlineAccessKey.parse(trimmed) {
-            profile.outlineConfig = config
+        do {
+            profile.outlineConfig = try OutlineAccessKey.decode(trimmed)
             accessKeyError = nil
-        } else {
-            accessKeyError = "Invalid access key"
+        } catch {
+            accessKeyError = (error as? OutlineAccessKey.ParseError)?.description ?? "Invalid access key"
         }
     }
 }

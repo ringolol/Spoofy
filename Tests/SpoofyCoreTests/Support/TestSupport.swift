@@ -17,3 +17,12 @@ extension Data {
         self.init(bytes)
     }
 }
+
+/// Polls `condition` every 10 ms until it holds or the deadline passes; returns its final value.
+func eventually(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition() && Date() < deadline {
+        usleep(10_000)
+    }
+    return condition()
+}

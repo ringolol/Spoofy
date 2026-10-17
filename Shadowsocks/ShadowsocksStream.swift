@@ -1,61 +1,51 @@
 import Foundation
 import Network
-import CryptoKit
 import os.log
 
-/// Wraps an NWConnection to an Outline/Shadowsocks server, providing transparent
-/// AEAD encryption/decryption. Conforms to ConnectionProtocol so it can be used
-/// directly with ConnectionRelay.
+/// A connection to an Outline/Shadowsocks server that looks like a plain connection to the
+/// target: `send` encrypts and `receive` decrypts, so `ConnectionRelay` can pipe through it.
+/// The framing is `ShadowsocksAEADCodec`; this class only does the I/O. All calls run on `queue`
+/// (the session queue).
 final class ShadowsocksStream: ConnectionProtocol {
     private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "Shadowsocks")
 
-    private let underlying: NWConnection
-    private let masterKey: Data
-    private let cipher: ShadowsocksCipher
-    private let prefix: Data?
-    private let addressHeader: Data
+    /// outline-sdk's `ClientDataWait`: how long the address header waits for client data to
+    /// ride along with it before it goes out alone (N4).
+    static let defaultClientDataWait: TimeInterval = 0.010
+
+    private let underlying: any ConnectionProtocol
     private let queue: DispatchQueue
-
-    // Send state
-    private var sendKey: SymmetricKey?
-    private var sendNonce: [UInt8] = ShadowsocksCrypto.makeNonce()
-    private var preambleSent = false
-    private var addressSent = false
-
-    // Receive state machine
-    private enum ReceiveState {
-        case awaitingSalt
-        case awaitingLengthFrame
-        case awaitingPayloadFrame(payloadLen: Int)
-    }
-
-    private var recvState: ReceiveState = .awaitingSalt
-    private var recvBuffer = Data()
-    private var recvKey: SymmetricKey?
-    private var recvNonce: [UInt8] = ShadowsocksCrypto.makeNonce()
+    private var encoder: ShadowsocksAEADCodec.Encoder
+    private var decoder: ShadowsocksAEADCodec.Decoder
+    /// The address header, until it has been sent.
+    private var pendingHeader: Data?
+    private var headerFlush: DispatchWorkItem?
     private var pendingDecrypted = Data()
 
-    // MARK: - Init / Connect
-
-    private init(
-        underlying: NWConnection,
-        masterKey: Data,
-        cipher: ShadowsocksCipher,
-        prefix: Data?,
-        addressHeader: Data,
-        queue: DispatchQueue
-    ) {
+    /// Starts the header timer at once: a server-first protocol (SMTP, some chat protocols)
+    /// sends nothing until the server learns the target, so the header can't wait for the client.
+    init(underlying: any ConnectionProtocol, cipher: ShadowsocksCipher, masterKey: Data, salt: Data,
+         addressHeader: Data, queue: DispatchQueue, clientDataWait: TimeInterval = defaultClientDataWait) {
         self.underlying = underlying
-        self.masterKey = masterKey
-        self.cipher = cipher
-        self.prefix = prefix
-        self.addressHeader = addressHeader
         self.queue = queue
+        encoder = ShadowsocksAEADCodec.Encoder(cipher: cipher, masterKey: masterKey, salt: salt)
+        decoder = ShadowsocksAEADCodec.Decoder(cipher: cipher, masterKey: masterKey)
+        pendingHeader = addressHeader
+
+        let flush = DispatchWorkItem { [weak self] in self?.flushHeader() }
+        headerFlush = flush
+        queue.asyncAfter(deadline: .now() + clientDataWait, execute: flush)
     }
 
-    /// Creates a ShadowsocksStream connected to the Outline server, dialed through `dialer`
-    /// (so it gets the shared timeout and `.waiting` handling, N1). Runs on `session.queue`.
-    /// On success, the stream is ready for send/receive via ConnectionRelay.
+    /// The master key is always EVP_BytesToKey(password), as in outline-sdk and shadowbox for
+    /// these ciphers. The password is not a base64 key, even though Outline passwords look like
+    /// one (N3); the pre-4f code decoded it when it happened to be 32 bytes of base64.
+    static func masterKey(for config: OutlineServerConfig) -> Data {
+        ShadowsocksCrypto.masterKey(from: config.password, keyLen: ShadowsocksCrypto.keyLength(for: config.cipher))
+    }
+
+    /// Dials the Outline server through `dialer` (shared timeout and `.waiting` handling, N1).
+    /// Runs on `session.queue`; on success the stream is ready for the relay.
     static func connect(
         config: OutlineServerConfig,
         targetHost: String,
@@ -64,37 +54,25 @@ final class ShadowsocksStream: ConnectionProtocol {
         session: SessionScope,
         completion: @escaping (ShadowsocksStream?) -> Void
     ) {
-        guard let addressHeader = encodeTargetAddress(host: targetHost, port: targetPort) else {
+        guard let addressHeader = ShadowsocksAEADCodec.addressHeader(host: targetHost, port: targetPort) else {
             logger.error("Target host too long for Shadowsocks address header: \(targetHost.utf8.count) bytes")
-            completion(nil)
-            return
+            return completion(nil)
         }
-
-        let keyLen = ShadowsocksCrypto.keyLength(for: config.cipher)
-
-        // Outline uses base64-encoded PSK directly — NOT EVP_BytesToKey.
-        // The password field in the ss:// URI is the base64-encoded raw key.
-        // Try multiple base64 variants: standard, standard+padding, base64url+padding.
-        let masterKey: Data
-        if let decoded = Self.flexibleBase64Decode(config.password), decoded.count == keyLen {
-            masterKey = decoded
-        } else {
-            masterKey = ShadowsocksCrypto.masterKey(from: config.password, keyLen: keyLen)
+        let salt: Data
+        do {
+            salt = try ShadowsocksAEADCodec.makeSalt(cipher: config.cipher, prefix: config.prefix)
+        } catch {
+            // A key saved before N2 was checked at parse time.
+            logger.error("Outline prefix is \(config.prefix?.count ?? 0) bytes, longer than the salt; paste the access key again")
+            return completion(nil)
         }
 
         dialer.dial(DialTarget(host: config.host, port: config.port), resolver: nil, session: session) { result in
             switch result {
             case .success(let conn):
-                let stream = ShadowsocksStream(
-                    underlying: conn,
-                    masterKey: masterKey,
-                    cipher: config.cipher,
-                    prefix: config.prefix,
-                    addressHeader: addressHeader,
-                    queue: session.queue
-                )
-                logger.info("Connected to Outline server \(config.host):\(config.port) for \(targetHost):\(targetPort)")
-                completion(stream)
+                logger.info("Connected to Outline server for \(targetHost):\(targetPort)")
+                completion(ShadowsocksStream(underlying: conn, cipher: config.cipher, masterKey: masterKey(for: config),
+                                             salt: salt, addressHeader: addressHeader, queue: session.queue))
             case .failure(let error):
                 logger.error("Failed to connect to Outline server: \(error.description)")
                 completion(nil)
@@ -102,69 +80,19 @@ final class ShadowsocksStream: ConnectionProtocol {
         }
     }
 
-    // MARK: - ConnectionProtocol: Send
+    // MARK: - Send
 
     func send(content: Data?, contentContext: NWConnection.ContentContext,
               isComplete: Bool, completion: NWConnection.SendCompletion) {
-        guard let plaintext = content, !plaintext.isEmpty else {
-            underlying.send(content: nil, contentContext: contentContext,
-                           isComplete: isComplete, completion: completion)
-            return
+        let plaintext = content ?? Data()
+        // The first client data carries the header with it; an empty send still flushes it.
+        let payload = takeHeader() + plaintext
+        guard !payload.isEmpty else {
+            return underlying.send(content: nil, contentContext: contentContext, isComplete: isComplete, completion: completion)
         }
-
         do {
-            var encrypted = Data()
-
-            // Send preamble (salt) on first send.
-            // If a prefix is configured, it replaces the first N bytes of the salt
-            // (prefix is embedded INTO the salt, not prepended before it).
-            if !preambleSent {
-                let saltLen = ShadowsocksCrypto.saltLength(for: cipher)
-                var salt = Data(count: saltLen)
-                salt.withUnsafeMutableBytes { ptr in
-                    _ = SecRandomCopyBytes(kSecRandomDefault, saltLen, ptr.baseAddress!)
-                }
-                if let prefix = prefix {
-                    salt.replaceSubrange(0..<prefix.count, with: prefix)
-                }
-                sendKey = ShadowsocksCrypto.deriveSubkey(masterKey: masterKey, salt: salt)
-                encrypted.append(salt)
-                preambleSent = true
-            }
-
-            // Build payload: prepend target address on first payload
-            var payload: Data
-            if !addressSent {
-                payload = addressHeader + plaintext
-                addressSent = true
-            } else {
-                payload = plaintext
-            }
-
-            // Chunk and encrypt
-            var offset = 0
-            while offset < payload.count {
-                let chunkSize = min(ShadowsocksCrypto.maxPayloadSize, payload.count - offset)
-                let chunk = payload[payload.startIndex.advanced(by: offset)..<payload.startIndex.advanced(by: offset + chunkSize)]
-
-                // Encrypt length (2 bytes big-endian)
-                let lenBytes = Data([UInt8(chunkSize >> 8), UInt8(chunkSize & 0xFF)])
-                let encLen = try ShadowsocksCrypto.aeadEncrypt(
-                    key: sendKey!, nonce: &sendNonce, plaintext: lenBytes, cipher: cipher
-                )
-                encrypted.append(encLen)
-
-                // Encrypt payload
-                let encPayload = try ShadowsocksCrypto.aeadEncrypt(
-                    key: sendKey!, nonce: &sendNonce, plaintext: Data(chunk), cipher: cipher
-                )
-                encrypted.append(encPayload)
-
-                offset += chunkSize
-            }
-
-            underlying.send(content: encrypted, contentContext: contentContext,
-                           isComplete: isComplete, completion: completion)
+            let sealed = try encoder.seal(payload)
+            underlying.send(content: sealed, contentContext: contentContext, isComplete: isComplete, completion: completion)
         } catch {
             Self.logger.error("Shadowsocks encrypt error: \(error.localizedDescription)")
             cancel()
@@ -174,151 +102,60 @@ final class ShadowsocksStream: ConnectionProtocol {
         }
     }
 
-    // MARK: - ConnectionProtocol: Receive
+    private func flushHeader() {
+        guard pendingHeader != nil else { return }
+        send(content: nil, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { error in
+            if let error { Self.logger.debug("Shadowsocks header write failed: \(error.localizedDescription)") }
+        })
+    }
+
+    private func takeHeader() -> Data {
+        guard let header = pendingHeader else { return Data() }
+        pendingHeader = nil
+        headerFlush?.cancel()
+        headerFlush = nil
+        return header
+    }
+
+    // MARK: - Receive
 
     func receive(minimumIncompleteLength: Int, maximumLength: Int,
                  completion: @escaping @Sendable (Data?, NWConnection.ContentContext?, Bool, NWError?) -> Void) {
-        // Deliver buffered decrypted data first
         if !pendingDecrypted.isEmpty {
-            let chunk = pendingDecrypted.prefix(maximumLength)
-            pendingDecrypted.removeFirst(chunk.count)
-            completion(Data(chunk), .defaultMessage, false, nil)
-            return
+            return completion(takeDecrypted(maximumLength), .defaultMessage, false, nil)
         }
-        readAndProcess(maximumLength: maximumLength, completion: completion)
-    }
-
-    private func readAndProcess(
-        maximumLength: Int,
-        completion: @escaping @Sendable (Data?, NWConnection.ContentContext?, Bool, NWError?) -> Void
-    ) {
         underlying.receive(minimumIncompleteLength: 1, maximumLength: 32768) { [self] data, ctx, isComplete, error in
-            if let error = error {
-                completion(nil, ctx, isComplete, error)
-                return
+            if let error {
+                return completion(nil, ctx, isComplete, error)
             }
-            if let data = data {
-                recvBuffer.append(data)
-            }
-
-            // Drive state machine as far as buffer allows
-            let ok = processRecvBuffer()
-            if !ok {
-                // Decryption failure — connection is poisoned
-                Self.logger.error("Shadowsocks decrypt failure, closing stream")
+            do {
+                pendingDecrypted += try decoder.feed(data ?? Data())
+            } catch {
+                Self.logger.error("Shadowsocks decrypt failure (\(String(describing: error))), closing stream")
                 completion(nil, nil, true, NWError.posix(.EIO))
-                cancel()
-                return
+                return cancel()
             }
-
-            // Deliver if we have decrypted data
             if !pendingDecrypted.isEmpty {
-                let chunk = pendingDecrypted.prefix(maximumLength)
-                pendingDecrypted.removeFirst(chunk.count)
-                completion(Data(chunk), .defaultMessage, false, nil)
+                completion(takeDecrypted(maximumLength), .defaultMessage, false, nil)
             } else if isComplete {
                 completion(nil, ctx, true, nil)
             } else {
-                // Need more data — recurse
-                readAndProcess(maximumLength: maximumLength, completion: completion)
+                receive(minimumIncompleteLength: minimumIncompleteLength, maximumLength: maximumLength, completion: completion)
             }
         }
     }
 
-    /// Processes recvBuffer through the state machine, appending decrypted payloads
-    /// to pendingDecrypted. Returns false on decryption failure (fatal).
-    private func processRecvBuffer() -> Bool {
-        while true {
-            switch recvState {
-            case .awaitingSalt:
-                let saltLen = ShadowsocksCrypto.saltLength(for: cipher)
-                guard recvBuffer.count >= saltLen else { return true }
-                let salt = recvBuffer.prefix(saltLen)
-                recvBuffer.removeFirst(saltLen)
-                recvKey = ShadowsocksCrypto.deriveSubkey(masterKey: masterKey, salt: Data(salt))
-                recvState = .awaitingLengthFrame
-                continue
-
-            case .awaitingLengthFrame:
-                let needed = 2 + ShadowsocksCrypto.tagLength  // 18 bytes
-                guard recvBuffer.count >= needed else { return true }
-                let frame = Data(recvBuffer.prefix(needed))
-                recvBuffer.removeFirst(needed)
-                guard let lenBytes = ShadowsocksCrypto.aeadDecrypt(
-                    key: recvKey!, nonce: &recvNonce, ciphertext: frame, cipher: cipher
-                ) else { return false }
-                let payloadLen = Int(lenBytes[0]) << 8 | Int(lenBytes[1])
-                guard payloadLen > 0 && payloadLen <= ShadowsocksCrypto.maxPayloadSize else { return false }
-                recvState = .awaitingPayloadFrame(payloadLen: payloadLen)
-                continue
-
-            case .awaitingPayloadFrame(let payloadLen):
-                let needed = payloadLen + ShadowsocksCrypto.tagLength
-                guard recvBuffer.count >= needed else { return true }
-                let frame = Data(recvBuffer.prefix(needed))
-                recvBuffer.removeFirst(needed)
-                guard let payload = ShadowsocksCrypto.aeadDecrypt(
-                    key: recvKey!, nonce: &recvNonce, ciphertext: frame, cipher: cipher
-                ) else { return false }
-                pendingDecrypted.append(payload)
-                recvState = .awaitingLengthFrame
-                continue
-            }
-        }
+    private func takeDecrypted(_ maximumLength: Int) -> Data {
+        let chunk = Data(pendingDecrypted.prefix(maximumLength))
+        pendingDecrypted = Data(pendingDecrypted.dropFirst(chunk.count))
+        return chunk
     }
 
-    // MARK: - ConnectionProtocol: Cancel
+    // MARK: - Cancel
 
     func cancel() {
+        headerFlush?.cancel()
+        headerFlush = nil
         underlying.cancel()
-    }
-
-    // MARK: - Target Address Encoding
-
-    /// Decodes a base64 string, trying standard, padded, and base64url variants.
-    private static func flexibleBase64Decode(_ input: String) -> Data? {
-        // Standard base64 as-is
-        if let d = Data(base64Encoded: input) { return d }
-        // Add padding if missing
-        var padded = input
-        let r = padded.count % 4
-        if r != 0 { padded.append(String(repeating: "=", count: 4 - r)) }
-        if let d = Data(base64Encoded: padded) { return d }
-        // Base64url: replace - with +, _ with /, then pad
-        var urlSafe = input
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let r2 = urlSafe.count % 4
-        if r2 != 0 { urlSafe.append(String(repeating: "=", count: 4 - r2)) }
-        return Data(base64Encoded: urlSafe)
-    }
-
-    /// Encodes the target host:port as a SOCKS5 address header.
-    /// - IPv4:   [0x01][4 bytes][port big-endian]
-    /// - Domain: [0x03][len][domain bytes][port big-endian]
-    /// - IPv6:   [0x04][16 bytes][port big-endian]
-    /// Returns nil for an empty domain or one longer than 255 bytes (the length is a single byte).
-    static func encodeTargetAddress(host targetHost: String, port targetPort: UInt16) -> Data? {
-        var addr = Data()
-        let portBytes = Data([UInt8(targetPort >> 8), UInt8(targetPort & 0xFF)])
-
-        var ipv4Addr = in_addr()
-        var ipv6Addr = in6_addr()
-        if inet_pton(AF_INET, targetHost, &ipv4Addr) == 1 {
-            addr.append(0x01)
-            withUnsafeBytes(of: &ipv4Addr) { addr.append(contentsOf: $0) }
-        } else if inet_pton(AF_INET6, targetHost, &ipv6Addr) == 1 {
-            addr.append(0x04)
-            withUnsafeBytes(of: &ipv6Addr) { addr.append(contentsOf: $0) }
-        } else {
-            let domainBytes = Array(targetHost.utf8)
-            guard (1...255).contains(domainBytes.count) else { return nil }
-            addr.append(0x03)
-            addr.append(UInt8(domainBytes.count))
-            addr.append(contentsOf: domainBytes)
-        }
-
-        addr.append(portBytes)
-        return addr
     }
 }

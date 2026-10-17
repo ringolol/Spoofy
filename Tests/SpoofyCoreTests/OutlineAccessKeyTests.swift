@@ -63,18 +63,57 @@ final class OutlineAccessKeyTests: XCTestCase {
     // each code point <= 0xFF to one byte, so %C2%A8 (U+00A8) is the single byte 0xA8.
     // This is the TLS-ClientHello prefix from Outline's prefixing guide.
     func testPrefixCodePointsBecomeBytes() throws {
-        XCTExpectFailure("N13: prefix keeps raw UTF-8 bytes instead of code points")
         let config = try XCTUnwrap(OutlineAccessKey.parse(
             "ss://\(b64url("aes-256-gcm:pw"))@example.net:443/?outline=1&prefix=%16%03%01%00%C2%A8%01%01"
         ))
         XCTAssertEqual(config.prefix?.hex, "16030100a80101")
     }
 
+    func testPrefixIsQueryUnescapedLikeGo() throws {
+        let key = "ss://\(b64url("aes-256-gcm:pw"))@example.net:443/?outline=1&prefix="
+        XCTAssertEqual(try OutlineAccessKey.decode(key + "GET+%2F").prefix, Data("GET /".utf8))
+        XCTAssertEqual(try OutlineAccessKey.decode(key + "%c3%bf").prefix, Data([0xFF]), "lower-case escapes")
+        XCTAssertEqual(try OutlineAccessKey.decode(key).prefix, Data(), "an empty prefix is no prefix bytes")
+    }
+
+    func testBadPrefixIsRejected() {
+        let key = "ss://\(b64url("aes-256-gcm:pw"))@example.net:443/?prefix="
+        for bad in ["%E2%82%AC",   // U+20AC is above U+00FF
+                    "%A8",         // a lone byte is not UTF-8
+                    "%G1", "%1", "%+1"] {
+            XCTAssertThrowsError(try OutlineAccessKey.decode(key + bad), bad) {
+                XCTAssertEqual($0 as? OutlineAccessKey.ParseError, .invalidPrefix, bad)
+            }
+        }
+    }
+
     // N2: outline-sdk rejects a prefix longer than the salt ("prefix is too long").
     func testPrefixLongerThanSaltIsRejected() {
-        XCTExpectFailure("N2: over-long prefix is accepted")
-        let prefix = String(repeating: "A", count: 33)
-        XCTAssertNil(OutlineAccessKey.parse("ss://\(b64url("aes-256-gcm:pw"))@example.net:443/?prefix=\(prefix)"))
+        let key = "ss://\(b64url("aes-256-gcm:pw"))@example.net:443/?prefix="
+        XCTAssertEqual(try OutlineAccessKey.decode(key + String(repeating: "A", count: 32)).prefix?.count, 32)
+        XCTAssertThrowsError(try OutlineAccessKey.decode(key + String(repeating: "A", count: 33))) {
+            XCTAssertEqual($0 as? OutlineAccessKey.ParseError, .prefixTooLong(33, max: 32))
+        }
+        // Counted in bytes after the code-point mapping: 32 × U+00A8 is 32 bytes.
+        XCTAssertEqual(try OutlineAccessKey.decode(key + String(repeating: "%C2%A8", count: 32)).prefix?.count, 32)
+    }
+
+    func testErrorsSayWhatIsWrong() {
+        XCTAssertThrowsError(try OutlineAccessKey.decode("ss://\(b64url("rc4-md5:pw"))@example.net:443")) {
+            XCTAssertEqual($0 as? OutlineAccessKey.ParseError, .unsupportedCipher("rc4-md5"))
+        }
+        XCTAssertThrowsError(try OutlineAccessKey.decode("https://example.net")) {
+            XCTAssertEqual($0 as? OutlineAccessKey.ParseError, .notAnAccessKey)
+        }
+    }
+
+    func testLegacyFormatAcceptsURLSafeBase64() throws {
+        // "a>>b??" puts '+' and '/' in standard base64.
+        let standard = Data("aes-256-gcm:a>>b??@h:1".utf8).base64EncodedString()
+        XCTAssertTrue(standard.contains("+") || standard.contains("/"), standard)
+        let urlSafe = standard.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+        XCTAssertEqual(try OutlineAccessKey.decode("ss://" + standard).password, "a>>b??")
+        XCTAssertEqual(try OutlineAccessKey.decode("ss://" + urlSafe).password, "a>>b??")
     }
 
     func testRejectsMalformedKeys() {
