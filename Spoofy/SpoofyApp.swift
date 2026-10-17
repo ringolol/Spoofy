@@ -2,12 +2,20 @@ import SwiftUI
 
 @main
 struct SpoofyApp: App {
-    @StateObject private var proxyManager = ProxyManager()
+    @StateObject private var settings: SettingsStore
+    @StateObject private var proxyManager: ProxyManager
+
+    init() {
+        let settings = SettingsStore()
+        _settings = StateObject(wrappedValue: settings)
+        _proxyManager = StateObject(wrappedValue: ProxyManager(settings: settings))
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(proxyManager)
+                .environmentObject(settings)
                 #if targetEnvironment(macCatalyst)
                 .onAppear(perform: configureCatalystWindow)
                 #endif

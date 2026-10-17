@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var proxyManager: ProxyManager
+    @EnvironmentObject var settings: SettingsStore
 
     var body: some View {
         NavigationStack {
@@ -23,11 +24,19 @@ struct ContentView: View {
                     .font(.title2)
                     .fontWeight(.medium)
 
-                if proxyManager.isRunning {
-                    Text(verbatim: "Configure Wi-Fi proxy to\n127.0.0.1:\(AppSettings.shared.proxyPort)")
+                if proxyManager.isRunning, let listening = proxyManager.listening {
+                    Text(verbatim: "Configure Wi-Fi proxy to\n127.0.0.1:\(listening.port)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+
+                    if proxyManager.needsRestart {
+                        Text("Restart the proxy to apply the new port or LAN setting.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
                 }
 
                 // Start/Stop button

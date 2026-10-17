@@ -6,43 +6,44 @@ import XCTest
 /// This is the contract the step-4d handler rewrite must keep. DoH is off and every target
 /// is a loopback literal or `localhost`, so nothing leaves the machine.
 final class LoopbackHarnessTests: XCTestCase {
-    private var suiteName: String!
-    private var settings: AppSettings!
     private var proxy: ProxyServer?
     private var origins: [LoopbackOrigin] = []
-
-    override func setUp() {
-        super.setUp()
-        suiteName = "SpoofyLoopbackTests.\(UUID().uuidString)"
-        settings = AppSettings(defaults: UserDefaults(suiteName: suiteName)!)
-    }
 
     override func tearDown() {
         proxy?.stop()
         origins.forEach { $0.stop() }
-        UserDefaults().removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
     // MARK: - Fixture
 
     /// With a `resolver`, DoH is on and every lookup goes to it instead of the network.
-    private func startProxy(splitMode: SplitMode, chunkSize: Int = 5, recordFragmentation: Bool = false,
-                            resolver: FakeResolver? = nil, handshakeTimeout: TimeInterval = 10) throws -> UInt16 {
+    private static func config(splitMode: SplitMode, chunkSize: Int = 5, recordFragmentation: Bool = false,
+                               dohEnabled: Bool = false, rules: [SpoofProfile] = []) -> ProxyConfig {
         var master = SpoofProfile.makeDefault()
         master.splitMode = splitMode
         master.chunkSize = chunkSize
         master.tlsRecordFragmentation = recordFragmentation
-        master.dohEnabled = resolver != nil
-        settings.profiles = [master]
-        settings.allowLANAccess = false
+        master.dohEnabled = dohEnabled
+        return ProxyConfig(profiles: rules + [master], port: 0, allowLANAccess: false)
+    }
+
+    private func startProxy(splitMode: SplitMode, chunkSize: Int = 5, recordFragmentation: Bool = false,
+                            resolver: FakeResolver? = nil, handshakeTimeout: TimeInterval = 10) throws -> UInt16 {
+        try startProxy(Self.config(splitMode: splitMode, chunkSize: chunkSize, recordFragmentation: recordFragmentation,
+                                   dohEnabled: resolver != nil),
+                       resolver: resolver, handshakeTimeout: handshakeTimeout)
+    }
+
+    private func startProxy(_ config: ProxyConfig, resolver: FakeResolver? = nil,
+                            handshakeTimeout: TimeInterval = 10) throws -> UInt16 {
 
         let resolverCache = DoHResolverCache { url in
             guard let resolver else { preconditionFailure("DoH is off, but a resolver was requested for \(url)") }
             return resolver
         }
         // Short first-byte timer so the server-first tests (U7) don't wait the production 2 s.
-        let server = ProxyServer(port: 0, settings: settings, resolverCache: resolverCache,
+        let server = ProxyServer(config: config, resolverCache: resolverCache,
                                  limits: Session.Limits(handshakeTimeout: handshakeTimeout, firstByteTimeout: 0.3))
         let started = expectation(description: "proxy ready")
         let failure = LockedBox<Error?>(nil)
@@ -545,5 +546,41 @@ final class LoopbackHarnessTests: XCTestCase {
         client.close()
         XCTAssertTrue(eventually { self.proxy?.activeSessionCount == 0 })
         XCTAssertTrue(eventually { origin.closedCount == 1 })
+    }
+
+    // MARK: - U13: a settings change reaches open connections
+
+    /// Disabling or enabling a rule must not leave open tunnels on their old route: the ones
+    /// whose route changed are closed so the client reconnects. The others stay open, including
+    /// a relaying tunnel whose only change is the desync mode.
+    func testConfigUpdateClosesSessionsWhoseRouteChanged() throws {
+        let origin = try startOrigin(.echo)
+        let port = try startProxy(splitMode: .none)
+        let kept = try connectTunnel(proxyPort: port, originPort: origin.port, host: "127.0.0.1")
+        let moved = try connectTunnel(proxyPort: port, originPort: origin.port, host: "localhost")
+        for client in [kept, moved] {
+            try client.send("hello origin")
+            XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8))
+        }
+
+        // localhost now goes to a VPN route with no server, so it would be rejected.
+        var rule = SpoofProfile.makeDefault()
+        rule.id = UUID()
+        rule.isDefault = false
+        rule.domainPatterns = ["localhost"]
+        rule.routeMode = .vpn
+        proxy?.update(Self.config(splitMode: .sni, rules: [rule]))
+
+        XCTAssertTrue(moved.waitForClose(), "the re-routed tunnel should be closed")
+        XCTAssertFalse(kept.waitForClose(timeout: 0.3), "an unchanged route stays open")
+        try kept.send("still here")
+        XCTAssertEqual(try kept.read(count: 10), Data("still here".utf8))
+        XCTAssertTrue(eventually { self.proxy?.activeSessionCount == 1 })
+
+        // New connections use the new snapshot.
+        let rejected = try TestClient(port: port)
+        try rejected.send("CONNECT localhost:\(origin.port) HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        let reply = try rejected.read(through: Data("\r\n\r\n".utf8))
+        XCTAssertTrue(String(decoding: reply, as: UTF8.self).hasPrefix("HTTP/1.1 502"))
     }
 }

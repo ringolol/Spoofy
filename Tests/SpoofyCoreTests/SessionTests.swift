@@ -52,18 +52,28 @@ final class SessionTests: XCTestCase {
         client = FakeConnection(queue: scope.queue, script: script)
         upstream = FakeConnection(queue: scope.queue)
         outbound = FakeOutbound(connect.map { upstream! })
+        let outbound = self.outbound!
+        let deps = Session.Dependencies(router: Self.router(route: route, split: split, outline: outline),
+                                        limits: limits) { _ in outbound }
+        session = Session(scope: scope, client: client, deps: deps)
+        didClose = false
+        session.onClose = { [unowned self] in didClose = true }
+        scope.queue.async { self.session.start() }
+    }
+
+    /// Every host gets one profile.
+    private static func router(route: RouteMode, split: SplitMode, outline: OutlineServerConfig?) -> Router {
         var profile = SpoofProfile.makeDefault()
         profile.routeMode = route
         profile.splitMode = split
         profile.tlsRecordFragmentation = false
         profile.outlineConfig = outline
-        let router = Router { _ in profile }
-        let outbound = self.outbound!
-        let deps = Session.Dependencies(router: router, limits: limits) { _ in outbound }
-        session = Session(scope: scope, client: client, deps: deps)
-        didClose = false
-        session.onClose = { [unowned self] in didClose = true }
-        scope.queue.async { self.session.start() }
+        return Router { _ in profile }
+    }
+
+    private func reroute(route: RouteMode = .split, split: SplitMode = .firstByte, outline: OutlineServerConfig? = nil) {
+        let router = Self.router(route: route, split: split, outline: outline)
+        scope.queue.sync { session.reroute(router) }
     }
 
     private func waitForClose(timeout: TimeInterval = 2, file: StaticString = #filePath, line: UInt = #line) {
@@ -262,5 +272,54 @@ final class SessionTests: XCTestCase {
         start([.data(Self.greeting.prefix(1)), .eof])
         waitForClose()
         XCTAssertEqual(client.sent, [])
+    }
+
+    // MARK: - U13: re-routing a live session
+
+    func testRerouteClosesARelayingTunnelWhoseRouteChanged() {
+        start([.data(Self.connectHead + Self.hello)], route: .vpn, outline: Self.outline)
+        waitFor { self.upstream.sent.count == 1 }
+        reroute(route: .split, split: .none)
+        waitForClose()
+        XCTAssertTrue(client.cancelled)
+        XCTAssertTrue(upstream.cancelled)
+    }
+
+    func testRerouteKeepsATunnelWhoseRouteIsUnchanged() {
+        start([.data(Self.connectHead + Self.hello)], route: .vpn, outline: Self.outline)
+        waitFor { self.upstream.sent.count == 1 }
+        reroute(route: .vpn, outline: Self.outline)
+        settle()
+        XCTAssertEqual(phase(), .relaying)
+    }
+
+    /// Once relaying, the first-flight desync is done: direct and desync are the same route.
+    func testRerouteIgnoresADesyncChangeOnceRelaying() {
+        start([.data(Self.connectHead + Self.hello)], split: .firstByte)
+        waitFor { self.upstream.sent.count == 2 }
+        reroute(split: .none)
+        settle()
+        XCTAssertEqual(phase(), .relaying)
+    }
+
+    /// Before the first flight, the desync parameters still matter.
+    func testRerouteClosesAWaitingTunnelWhoseDesyncChanged() {
+        start([.data(Self.connectHead)], split: .firstByte)
+        waitFor { self.client.sent.count == 1 }
+        XCTAssertEqual(phase(), .readingFirstFlight)
+        reroute(split: .sni)
+        waitForClose()
+        XCTAssertEqual(upstream.sent, [])
+    }
+
+    func testAHandshakingSessionUsesTheNewRouter() {
+        start([.data(Self.connectHead.prefix(10))])
+        settle()
+        XCTAssertEqual(phase(), .handshaking)
+        reroute(route: .vpn)
+        client.push(.data(Self.connectHead.dropFirst(10)))
+        waitForClose()
+        XCTAssertEqual(client.sent, [HTTPHeadParser.response(502, "Bad Gateway")])
+        XCTAssertEqual(outbound.targets, [], "the new VPN route has no server, so nothing is dialed")
     }
 }

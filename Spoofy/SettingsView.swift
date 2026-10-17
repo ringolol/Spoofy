@@ -1,47 +1,51 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var profiles: [SpoofProfile] = []
-    @State private var portText: String = "8090"
-    @State private var allowLANAccess: Bool = false
+    @EnvironmentObject private var settings: SettingsStore
+    @State private var portText: String = ""
     @State private var showExportedAlert = false
     @State private var showImportConfirm = false
-    @State private var showImportError = false
+    @State private var importError: String?
     @State private var pendingImportJSON: String?
-
-    private let settings = AppSettings.shared
 
     var body: some View {
         Form {
+            if let loadError = settings.loadError {
+                Section {
+                    Label(loadError, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                }
+            }
+
             Section("Profiles") {
-                ForEach(customProfiles) { profile in
+                ForEach(settings.customProfiles) { profile in
                     profileRow(profile)
                 }
                 .onDelete(perform: deleteCustomProfiles)
-                .onMove(perform: moveCustomProfiles)
+                .onMove(perform: settings.moveCustomProfiles)
 
-                if let def = defaultProfile {
-                    NavigationLink {
-                        ProfileEditView(profileID: def.id)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(def.name)
-                                    .font(.body)
-                                Text("All traffic")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(def.routeMode == .vpn ? def.vpnType.displayName : def.splitMode.displayName)
+                let master = settings.master
+                NavigationLink {
+                    ProfileEditView(profileID: master.id)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(master.name)
+                                .font(.body)
+                            Text("All traffic")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                        Spacer()
+                        Text(master.routeMode == .vpn ? master.vpnType.displayName : master.splitMode.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
                 Button {
-                    addProfile()
+                    settings.addProfile()
                 } label: {
                     Label("Add Profile", systemImage: "plus")
                 }
@@ -59,7 +63,7 @@ struct SettingsView: View {
 
                 Button {
                     guard let json = UIPasteboard.general.string else {
-                        showImportError = true
+                        importError = "The clipboard is empty."
                         return
                     }
                     pendingImportJSON = json
@@ -69,7 +73,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Advanced") {
+            Section {
                 HStack {
                     Text("Proxy Port")
                     Spacer()
@@ -80,16 +84,20 @@ struct SettingsView: View {
                         .onChange(of: portText) { newValue in
                             let filtered = String(newValue.filter { $0.isNumber }.prefix(5))
                             if filtered != newValue { portText = filtered }
-                            if let port = UInt16(filtered), port >= 1024 {
-                                settings.proxyPort = port
+                            if let port = UInt16(filtered) {
+                                settings.setProxyPort(port)
                             }
                         }
                 }
 
-                Toggle("Allow LAN Access", isOn: $allowLANAccess)
-                    .onChange(of: allowLANAccess) { newValue in
-                        settings.allowLANAccess = newValue
-                    }
+                Toggle("Allow LAN Access", isOn: Binding(
+                    get: { settings.allowLANAccess },
+                    set: { settings.setAllowLANAccess($0) }
+                ))
+            } header: {
+                Text("Advanced")
+            } footer: {
+                Text("Ports 1024–65535. Port and LAN changes apply on the next start.")
             }
 
             Section {
@@ -104,7 +112,7 @@ struct SettingsView: View {
         .toolbar {
             EditButton()
         }
-        .onAppear { reload() }
+        .onAppear { portText = "\(settings.proxyPort)" }
         .alert("Settings Exported", isPresented: $showExportedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -116,9 +124,9 @@ struct SettingsView: View {
                 if let json = pendingImportJSON {
                     do {
                         try settings.importJSON(json)
-                        reload()
+                        portText = "\(settings.proxyPort)"
                     } catch {
-                        showImportError = true
+                        importError = error.localizedDescription
                     }
                 }
                 pendingImportJSON = nil
@@ -126,25 +134,14 @@ struct SettingsView: View {
         } message: {
             Text("This will replace all current settings with the imported ones.")
         }
-        .alert("Import Failed", isPresented: $showImportError) {
+        .alert("Import Failed", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Clipboard does not contain valid settings data.")
+            Text(importError ?? "")
         }
-    }
-
-    private var customProfiles: [SpoofProfile] {
-        profiles.filter { !$0.isDefault }
-    }
-
-    private var defaultProfile: SpoofProfile? {
-        profiles.first { $0.isDefault }
-    }
-
-    private func reload() {
-        profiles = settings.profiles
-        portText = "\(settings.proxyPort)"
-        allowLANAccess = settings.allowLANAccess
     }
 
     private func profileRow(_ profile: SpoofProfile) -> some View {
@@ -152,9 +149,16 @@ struct SettingsView: View {
             ProfileEditView(profileID: profile.id)
         } label: {
             HStack {
-                Toggle("", isOn: toggleBinding(for: profile))
-                    .labelsHidden()
-                    .fixedSize()
+                Toggle("", isOn: Binding(
+                    get: { profile.isEnabled },
+                    set: { newValue in
+                        var changed = profile
+                        changed.isEnabled = newValue
+                        settings.update(changed)
+                    }
+                ))
+                .labelsHidden()
+                .fixedSize()
 
                 VStack(alignment: .leading) {
                     Text(profile.name.isEmpty ? "New Profile" : profile.name)
@@ -177,76 +181,28 @@ struct SettingsView: View {
         }
     }
 
-    private func toggleBinding(for profile: SpoofProfile) -> Binding<Bool> {
-        Binding(
-            get: { profiles.first { $0.id == profile.id }?.isEnabled ?? false },
-            set: { newValue in
-                if let idx = profiles.firstIndex(where: { $0.id == profile.id }) {
-                    profiles[idx].isEnabled = newValue
-                    saveProfiles()
-                }
-            }
-        )
-    }
-
-    private func addProfile() {
-        let newProfile = SpoofProfile(
-            id: UUID(),
-            name: "",
-            isEnabled: true,
-            domainPatterns: [],
-            routeMode: .split,
-            vpnType: .outline,
-            outlineConfig: nil,
-            splitMode: .none,
-            chunkSize: 5,
-            tlsRecordFragmentation: false,
-            dohEnabled: false,
-            dohServerURL: "https://1.1.1.1/dns-query",
-            isDefault: false,
-            inheritDoH: true,
-            inheritOutlineConfig: true
-        )
-        let defaultIndex = profiles.firstIndex { $0.isDefault } ?? profiles.endIndex
-        profiles.insert(newProfile, at: defaultIndex)
-        saveProfiles()
-    }
-
     private func deleteCustomProfiles(at offsets: IndexSet) {
-        let custom = customProfiles
-        let idsToDelete = offsets.map { custom[$0].id }
-        profiles.removeAll { idsToDelete.contains($0.id) }
-        saveProfiles()
-    }
-
-    private func moveCustomProfiles(from source: IndexSet, to destination: Int) {
-        var custom = customProfiles
-        custom.move(fromOffsets: source, toOffset: destination)
-        let def = profiles.filter { $0.isDefault }
-        profiles = custom + def
-        saveProfiles()
-    }
-
-    private func saveProfiles() {
-        settings.profiles = profiles
+        let custom = settings.customProfiles
+        settings.deleteProfiles(ids: Set(offsets.map { custom[$0].id }))
     }
 }
 
 // MARK: - Profile Edit
 
+/// Edits a copy of the profile and commits it when the view goes away or the app leaves the
+/// foreground (M6), rather than on every keystroke.
 struct ProfileEditView: View {
     let profileID: UUID
 
+    @EnvironmentObject private var settings: SettingsStore
+    @Environment(\.scenePhase) private var scenePhase
     @State private var profile: SpoofProfile = SpoofProfile.makeDefault()
+    @State private var loaded = false
     @State private var domainText: String = ""
     @State private var accessKeyText: String = ""
     @State private var accessKeyError: String?
 
-    private let settings = AppSettings.shared
-
-    private var masterProfile: SpoofProfile? {
-        settings.profiles.first { $0.isDefault }
-    }
+    private var masterProfile: SpoofProfile? { settings.master }
 
     var body: some View {
         Form {
@@ -396,12 +352,15 @@ struct ProfileEditView: View {
         }
         .navigationTitle(profile.isDefault ? "Master" : profile.name)
         .onAppear {
-            if let found = settings.profiles.first(where: { $0.id == profileID }) {
-                profile = found
-                domainText = found.domainPatterns.joined(separator: "\n")
-            }
+            guard !loaded, let found = settings.profiles.first(where: { $0.id == profileID }) else { return }
+            profile = found
+            domainText = found.domainPatterns.joined(separator: "\n")
+            loaded = true
         }
-        .onChange(of: profile) { _ in save() }
+        .onDisappear { save() }
+        .onChange(of: scenePhase) { phase in
+            if phase != .active { save() }
+        }
         .onChange(of: domainText) { newValue in
             profile.domainPatterns = newValue
                 .components(separatedBy: "\n")
@@ -410,12 +369,10 @@ struct ProfileEditView: View {
         }
     }
 
+    /// A no-op if nothing changed, or if the profile was never loaded.
     private func save() {
-        var all = settings.profiles
-        if let idx = all.firstIndex(where: { $0.id == profileID }) {
-            all[idx] = profile
-            settings.profiles = all
-        }
+        guard loaded else { return }
+        settings.update(profile)
     }
 
     private func parseAccessKey(_ text: String) {

@@ -56,8 +56,8 @@ struct Router {
         self.profileForHost = profileForHost
     }
 
-    init(settings: AppSettings) {
-        self.init(profileForHost: settings.matchingProfile(for:))
+    init(config: ProxyConfig) {
+        self.init(profileForHost: config.profile(for:))
     }
 
     func route(_ target: DialTarget, kind: InboundRequest.Kind) -> RouteDecision {

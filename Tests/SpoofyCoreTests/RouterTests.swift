@@ -59,11 +59,8 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(decision.outbound, .direct)
     }
 
-    /// Through `AppSettings`: a custom VPN profile that inherits Master's server gets it.
+    /// Through `ProxyConfig`: a custom VPN profile that inherits Master's server gets it.
     func testInheritedVPNConfigComesFromMaster() {
-        let suite = "RouterTests.\(UUID().uuidString)"
-        defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let settings = AppSettings(defaults: UserDefaults(suiteName: suite)!)
         var master = SpoofProfile.makeDefault()
         master.outlineConfig = Self.outline
         var vpn = SpoofProfile.makeDefault()
@@ -72,9 +69,8 @@ final class RouterTests: XCTestCase {
         vpn.domainPatterns = ["example.com"]
         vpn.routeMode = .vpn
         vpn.inheritOutlineConfig = true
-        settings.profiles = [vpn, master]
 
-        let router = Router(settings: settings)
+        let router = Router(config: ProxyConfig(profiles: [vpn, master], port: 8090, allowLANAccess: false))
         XCTAssertEqual(router.route(DialTarget(host: "example.com", port: 443), kind: .tunnel).outbound, .shadowsocks(Self.outline))
         XCTAssertEqual(router.route(DialTarget(host: "other.org", port: 443), kind: .tunnel).outbound, .direct)
     }

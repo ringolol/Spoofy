@@ -58,16 +58,10 @@ Each finding has an ID that later phases refer to.
 | ID | Where | Problem | Fix |
 |----|-------|---------|-----|
 | U1 | `Spoofy/SettingsView.swift:192` (`addProfile`) + `Shared/AppSettings.swift:231` (`matchingProfile`) | A new profile is created **enabled with empty patterns** and inserted before Master. Empty patterns match everything, so adding a profile silently re-routes all traffic. | An empty pattern list matches nothing, and Master is the only catch-all. Also create new profiles disabled. |
-| U2 | `AppSettings.swift:231` | The fallback is `profiles.last`. That is only correct while Master happens to stay last, and import or reorder can break it. | Master is identified by `id`/`isMaster`, not by position. `matchingProfile` returns `master` explicitly. |
-| U3 | `AppSettings.swift:275` (`matchesPatterns`) | `*.x.*` is implemented as `host.contains(middle)`, so `*.google.*` matches `notgoogle.community.org`. | Use label-aware matching (§6.6 `DomainMatcher`), as SpoofDPI's trie does. |
-| U4 | `AppSettings.swift:186` (`profiles` getter) | When decoding fails, it **overwrites stored profiles with defaults**. A bad migration or partial write therefore loses the user's config. It also decodes JSON on every access, including once per connection. | Decode once into the store. On failure, keep the raw blob under `profiles.backup.<timestamp>`, fall back to defaults in memory only, and surface the error in the UI. |
-| U5 | `AppSettings.swift:257-265` (`importJSON`) | No validation: duplicate IDs, a missing or duplicate Master, bad chunk sizes and unknown modes are all accepted. | `ProfileValidator` returns `[ValidationError]`. Import only succeeds when the list is empty, and it never replaces Master's identity. |
 | U6 | `HTTPSHandler.swift:44`, `HTTPHandler.swift:32`, `SOCKS5Handler.swift:254` | Route = VPN with `outlineConfig == nil` **falls through to a direct connection**. A user who expects tunnelling gets a direct, DPI-visible connection. | Fail closed: HTTP 502 or SOCKS5 reply `0x01`, plus a log line. The router (§6.5) makes this a single decision point. |
 | U9 | `Spoofy/ProxyManager.swift:40-44` | When the proxy fails to start, the silent audio player keeps running. The app then sits in the background draining battery for nothing. | Stop the audio in the error path. Make `ProxyManager` a small state machine: `idle → starting → running(port) → stopping → idle`, plus `failed(error)`. |
 | U10 | `ProxyServer.swift:46` | The `start` completion is called on **every** listener state change. That includes `.ready` after a network change and `.failed` later on, so `ProxyManager` flips state. | Call the completion once, on the first `.ready` or `.failed`. Report later failures through a separate `onFailure` handler. |
 | U11 | `Spoofy/BackgroundAudioPlayer.swift` | No `AVAudioSession.interruptionNotification` or `mediaServicesWereResetNotification` handling. After a phone call or Siri, the audio stays stopped and iOS suspends the proxy. | Observe both notifications. Resume on `.ended` (ignore `shouldResume`, because the session is silent), and rebuild the player after a media-services reset. |
-| U12 | `Spoofy/ContentView.swift:27` | Shows `settings.proxyPort`, not the port that is actually listening. After the user edits the port without restarting, the UI is wrong. | Display `ProxyManager.state.running(port)`. |
-| U13 | `ProxyServer` / `Session` | Found on device after 4d. The route is chosen once per connection, and a rule change affects only new connections. Safari keeps an active HTTP/2 tunnel open indefinitely, so after a rule is disabled (or enabled) the site keeps its old route — e.g. 2ip.io still shows the Outline IP — until Stop/Start. | On `server.update(config)`, re-route each live session's target with the new snapshot and close those whose `OutboundKind` changed; the browser reconnects and gets the new route. Sessions whose route is unchanged stay open. Test: `ProxyServerTests.testConfigUpdateClosesSessionsWhoseRouteChanged`. |
 
 ### 2.3 Network and protocol robustness (P2)
 
@@ -91,9 +85,7 @@ Each finding has an ID that later phases refer to.
 | M1 | `ProxyServer.swift:76-82` | The max-200 check and the increment are not atomic, so with a concurrent queue the limit can overshoot. | Make the admission decision on the server's serial queue (§6.1). |
 | M2 | `ProxyServer.stop()` | The listener is cancelled but active sessions keep running, so "Stop" doesn't stop traffic. | The server keeps a session registry, and `stop()` cancels all sessions. |
 | M3 | `ConnectionRelay` | Logs at debug level on every packet: CPU cost, and it leaks hostnames into the unified log. | Log per session (open, close, bytes, duration) only. Gate the per-packet log behind `#if DEBUG_TRACE`. |
-| M4 | `AppSettings.proxyPort` | `UInt16(defaults.integer)` traps on out-of-range values, for example after an import. | `UInt16(exactly:) ?? 8080`, and validate in the UI. |
 | M5 | `TLSParser` `Data.readUInt16(at:)` | Assumes zero-based indices and breaks on a `Data` slice. `splitFirstByte` returns `dropFirst` slices, which aren't zero-based. | Index from `startIndex`, or normalise with `Data(slice)` at module boundaries. Add a test that parses a slice. |
-| M6 | `ProfileEditView` | Saves on every keystroke, which re-encodes all profiles each time. | Use a local edit buffer and save on disappear or Done. With §6.7 the store debounces writes anyway. |
 
 ## 3. SpoofDPI comparison (what to port, what not)
 
@@ -177,12 +169,8 @@ Expected-failure ledger. Each item flips to a passing test when its fix lands; r
 
 | Finding | Test | Mechanism |
 |---------|------|-----------|
-| U3 | `DomainMatcherTests.testBothWildcardsAreLabelAware` | `XCTExpectFailure` |
-| U4 | `SettingsStoreTests.testCorruptedProfilesBlobIsPreserved` | `XCTExpectFailure` |
-| U5 | `SettingsStoreTests.testImportRejectsMissingMaster`, `testImportRejectsDuplicateIDs` | `XCTExpectFailure` |
 | N2 | `OutlineAccessKeyTests.testPrefixLongerThanSaltIsRejected` | `XCTExpectFailure` |
 | N13 | `OutlineAccessKeyTests.testPrefixCodePointsBecomeBytes` | `XCTExpectFailure` |
-| M4 | `SettingsStoreTests.testOutOfRangePortFallsBack` | `XCTSkipIf`, because it traps |
 | M5 | `TLSParserTests.testParsesFromDataSlice` | `XCTSkipIf`, because it traps |
 
 These items need the seams from later phases, so they are deferred:
@@ -590,7 +578,7 @@ Ordering detail for the desync tunnel: the client must get "200" or the SOCKS su
   - `Outbound` only connects (`connect(_:session:completion:)`); the first flight is written by the session with `SegmentWriter`. There is no `DesyncOutbound` or `Desyncer` protocol yet, and no `inner:` on `.shadowsocks`.
   - `SessionScope` stays as the connection-lifetime object (`Dialer` and `ShadowsocksStream` adopt into it); `Session` holds one.
   - The rewritten request keeps the client's HTTP version rather than forcing 1.1.
-  - `Router` takes a `profileForHost` closure (from `AppSettings` for now); `ProxyConfig` and `ResolvedProfile` come with 4e.
+  - `Router` takes a `profileForHost` closure (from `AppSettings` at the time; `Router(config:)` since 4e).
   - The deadline covers client-side waits only; the dial has its own 10 s timeout and the relay its 120 s idle timeout.
 
 ### 6.6 `DomainMatcher`
@@ -630,6 +618,22 @@ struct ProxyConfig: Sendable {          // immutable, built from SettingsStore
 - `AppSettings.shared` stays as a thin deprecated forwarder until every call site has moved, then it is deleted.
 - Migration: keep the current UserDefaults keys and JSON shape. The store reads the same format, so no user data migration is needed. Add `isMaster` with a decode default: the profile whose `id` equals today's master id, or the last profile, which matches today's implicit behaviour, once.
 
+**Step 4e status: done.**
+- `Shared/DomainMatcher.swift` (§6.6, U3): patterns parsed once into labels plus a leading and/or trailing `*`; a host is split once per lookup and compared label by label. `*.x.*` needs `x` as whole labels (a multi-label middle is a contiguous run). `DomainMatcherTests` keeps the old characterization rows and adds the new semantics.
+- `Shared/ProxyConfig.swift`: the immutable snapshot: `port`, `allowLANAccess`, `master` (by `isDefault`, U2) and `rules` (enabled custom profiles, inheritance applied, matcher prebuilt, rules with no usable pattern dropped). `profile(for:)` is first match, else Master. `ProfileMatchingTests` runs through it.
+- `Shared/SettingsStore.swift`: `@MainActor ObservableObject`, decoded once (U4). An undecodable blob is copied to `spoofProfiles.backup.<unix time>`, defaults are used in memory, `loadError` is shown in Settings, and the original key is only rewritten on the user's first change. Profiles are normalised to exactly one Master, last. Port: `UInt16(exactly:)`, 0 or out of range → 8090 (M4); `setProxyPort` accepts 1024–65535 only. Mutations (`update`, which keeps Master's identity; `addProfile`; `deleteProfiles`, never Master; `moveCustomProfiles`; `setProxyPort`; `setAllowLANAccess`) write through and call `onChange`. Same keys and JSON as before, so no migration (`testReadsTheOldFormat`).
+- `ProfileValidator` (U5): exactly one Master, unique ids, chunk size 1–1000, an https DoH URL where DoH is on and the profile owns its URL, port 1024–65535. A failed import changes nothing; the alert lists every issue.
+- `Shared/AppSettings.swift` → `Shared/SpoofProfile.swift` (models only); the `AppSettings` class is gone, with no deprecated forwarder, since every call site moved in this step. `Router(config:)` replaces `Router(settings:)`, `ProxyServer(config:)` replaces `(port:settings:)`.
+- U13: `ProxyServer.update(_:)` swaps the snapshot on `serverQueue` and calls `Session.reroute(_:)` on each session's queue. A session that has not routed yet just takes the new router; one that has is closed ("route changed to …") if its outbound differs. `ProxyManager` pushes `store.snapshot` from `onChange`. `SessionTests` (5 reroute cases) and `LoopbackHarnessTests.testConfigUpdateClosesSessionsWhoseRouteChanged`.
+- App: `SpoofyApp` owns the store and passes it to `ProxyManager(settings:)`; views read it as an `@EnvironmentObject`. `ProfileEditView` edits a local copy and commits on disappear or when the scene leaves `.active` (M6). U12: the main screen shows the port the listener was started with, plus a restart hint when the port or LAN setting changed since.
+- **Deviations:**
+  - No debounced writes: with the edit buffer, commits are coarse (a toggle, a reorder, leaving the editor), so every mutation writes synchronously.
+  - No `ResolvedProfile` type: rules hold a `SpoofProfile` with inheritance applied. `Session.Limits` stays a `ProxyServer` init parameter rather than part of `ProxyConfig`; there is no separate `doh` field (DoH is per profile).
+  - No `isMaster` field: `isDefault` already identifies Master, and normalisation handles a missing or duplicate one.
+  - Matcher semantics follow the characterization, not the first draft of §6.6: `*.example.com` also matches `example.com`, and `*.google.*` allows any number of labels after `google` (`www.google.co.uk`). `*.*` now matches every host; the old matcher matched nothing for it (`"abc".contains("")` is false), so an enabled `*.*` profile starts taking all traffic.
+  - Once a session is relaying, `direct` and `desync` count as the same route, so editing a split mode doesn't drop every open connection; before the first flight the full outbound is compared. Port and LAN changes still need Stop/Start.
+  - The U13 test lives in `LoopbackHarnessTests`, not a separate `ProxyServerTests`.
+
 ### 6.8 Shadowsocks restructuring
 
 - Extract `ShadowsocksAEADCodec`. It has no I/O.
@@ -659,9 +663,9 @@ This is also where `plans/outline-websocket-transport.md` attaches: the WebSocke
 | 4b | `ServerConnector` (§6.2) replaces the 3 dial helpers, plus `FakeResolver`; N10, N11. **Done**: see the §6.2 status | Green; network-scanner §1 is unblocked |
 | 4c | `ClientHelloReader` + `SegmentWriter`; U7, N7, U8, N15. **Done**: see the §6.3 status | Expected-failures for U7, N7, U8 and N15 removed |
 | 4d | Inbound parsers, `Router`, `Outbound`, `Session`; delete the 3 handlers; N6, N8, N9, M7. **Done**: see the §6.5 status | §5.2 session tests and harness scenarios 1–5 green |
-| 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, U13, M4, M6 | Characterization tests decide U3 semantics |
+| 4e | `SettingsStore`, `ProxyConfig`, `DomainMatcher`; U2–U5, U12, U13, M4, M6. **Done**: see the §6.7 status | Characterization tests decide U3 semantics |
 | 4f | Shadowsocks codec extraction, N2–N5 and N13 (N1 landed with 4b) | Codec KATs and opt-in interop scenario 6 green |
-| 4g | App layer U11, U12, M3 | Manual: call interruption test on device |
+| 4g | App layer U11, M3 (U12 landed with 4e) | Manual: call interruption test on device |
 
 Each row is one PR-sized change. Steps 4a–4c are mechanical and low-risk. Step 4d is the big one, and it lands only when the harness is green against the old handlers, so the harness is the contract.
 

@@ -66,6 +66,8 @@ final class Session {
 
     private let client: any ConnectionProtocol
     private let deps: Dependencies
+    /// Starts as `deps.router`; replaced by `reroute`.
+    private var router: Router
     private let startedAt = DispatchTime.now()
 
     private(set) var phase: Phase = .accepted
@@ -84,6 +86,7 @@ final class Session {
         self.scope = scope
         self.client = client
         self.deps = deps
+        self.router = deps.router
     }
 
     private var label: String {
@@ -129,6 +132,27 @@ final class Session {
         let onClose = self.onClose
         self.onClose = nil
         onClose?()
+    }
+
+    /// A settings change (U13). A session that hasn't routed yet just uses the new router. One
+    /// that has is closed if the new route differs, so the client reconnects on the new route.
+    /// Once relaying, the desync is history: direct and desync count as the same route.
+    func reroute(_ router: Router) {
+        assertOnQueue()
+        self.router = router
+        guard phase != .closed, phase != .failing, let request, let decision else { return }
+        let new = router.route(request.target, kind: request.kind).outbound
+        let changed = phase == .relaying
+            ? Self.relayPath(new) != Self.relayPath(decision.outbound)
+            : new != decision.outbound
+        if changed {
+            close("route changed to \(new)")
+        }
+    }
+
+    private static func relayPath(_ outbound: OutboundKind) -> OutboundKind {
+        if case .desync = outbound { return .direct }
+        return outbound
     }
 
     // MARK: - Deadline (N8)
@@ -184,7 +208,7 @@ final class Session {
     private func begin(_ request: InboundRequest) {
         self.request = request
         disarmDeadline()
-        let decision = deps.router.route(request.target, kind: request.kind)
+        let decision = router.route(request.target, kind: request.kind)
         self.decision = decision
         Self.logger.info("[\(self.label, privacy: .public)] \(self.inbound?.rawValue ?? "?", privacy: .public) \(request.kind == .tunnel ? "tunnel" : "http", privacy: .public) → \(String(describing: decision.outbound), privacy: .public)")
 

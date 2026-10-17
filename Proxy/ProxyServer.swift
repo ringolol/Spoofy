@@ -13,7 +13,7 @@ final class ProxyServer {
     static let maxConcurrentConnections = 200
 
     private let requestedPort: UInt16
-    private let settings: AppSettings
+    private let allowLANAccess: Bool
     private let ioRoot = DispatchQueue(label: "com.rnglol.Spoofy.io", qos: .userInitiated, attributes: .concurrent)
     private let serverQueue: DispatchQueue
     private let resolverCache: DoHResolverCache
@@ -21,6 +21,7 @@ final class ProxyServer {
     private let limits: Session.Limits
 
     // serverQueue only
+    private var config: ProxyConfig
     private var listener: NWListener?
     private var sessions: [UInt64: Session] = [:]
     private var nextSessionID: UInt64 = 0
@@ -34,12 +35,15 @@ final class ProxyServer {
     /// Sessions currently admitted (for tests and diagnostics).
     var activeSessionCount: Int { serverQueue.sync { sessions.count } }
 
-    init(port: UInt16, settings: AppSettings,
+    /// The listener is bound to `config.port` and `config.allowLANAccess` for its lifetime;
+    /// `update` changes routing only.
+    init(config: ProxyConfig,
          resolverCache: DoHResolverCache = DoHResolverCache(), dialer: Dialing = ServerConnector(),
          limits: Session.Limits = Session.Limits()) {
-        self.requestedPort = port
+        self.requestedPort = config.port
+        self.allowLANAccess = config.allowLANAccess
+        self.config = config
         self.limits = limits
-        self.settings = settings
         self.resolverCache = resolverCache
         self.dialer = dialer
         self.serverQueue = DispatchQueue(label: "com.rnglol.Spoofy.server", target: ioRoot)
@@ -52,7 +56,7 @@ final class ProxyServer {
         tcpOptions.noDelay = true
 
         let params = NWParameters(tls: nil, tcp: tcpOptions)
-        let bindAddress: NWEndpoint.Host = settings.allowLANAccess ? .ipv4(.any) : .ipv4(.loopback)
+        let bindAddress: NWEndpoint.Host = allowLANAccess ? .ipv4(.any) : .ipv4(.loopback)
         params.requiredLocalEndpoint = NWEndpoint.hostPort(
             host: bindAddress,
             port: NWEndpoint.Port(rawValue: requestedPort)!
@@ -72,7 +76,7 @@ final class ProxyServer {
             case .ready:
                 // .ready can repeat (e.g. after .waiting on a network change); report it once.
                 guard startReported.setIfFalse() else { return }
-                let addr = self.settings.allowLANAccess ? "0.0.0.0" : "127.0.0.1"
+                let addr = self.allowLANAccess ? "0.0.0.0" : "127.0.0.1"
                 let port = listener?.port?.rawValue ?? self.requestedPort
                 Self.logger.info("Proxy listening on \(addr):\(port)")
                 completion(nil)
@@ -114,6 +118,19 @@ final class ProxyServer {
         }
     }
 
+    /// Swaps the routing snapshot. New sessions use it; live sessions are re-routed against it
+    /// and closed if their route changed (U13), so the client reconnects on the new route.
+    /// Never call it from `serverQueue`.
+    func update(_ config: ProxyConfig) {
+        serverQueue.sync {
+            self.config = config
+            let router = Router(config: config)
+            for session in self.sessions.values {
+                session.queue.async { session.reroute(router) }
+            }
+        }
+    }
+
     // MARK: - Sessions
 
     /// Runs on `serverQueue`, so the check and the insert can't interleave (M1).
@@ -125,8 +142,7 @@ final class ProxyServer {
         }
 
         nextSessionID += 1
-        // Routing reads the settings per request, so changes apply to the next session.
-        let deps = Session.Dependencies(router: Router(settings: settings), limits: limits,
+        let deps = Session.Dependencies(router: Router(config: config), limits: limits,
                                         dialer: dialer, resolverCache: resolverCache)
         let session = Session(id: nextSessionID, client: clientConn, target: ioRoot, deps: deps)
         sessions[session.id] = session

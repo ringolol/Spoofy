@@ -22,7 +22,10 @@
 		9542604D3D1E3F43F900321B /* Outbound.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0005 /* Outbound.swift */; };
 		9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */; };
 		AA00000100000001AABB000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000E /* SettingsView.swift */; };
-		AA00000100000001AABB000F /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000C /* AppSettings.swift */; };
+		4E0000000000000000000011 /* DomainMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E0000000000000000000001 /* DomainMatcher.swift */; };
+		4E0000000000000000000012 /* ProxyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E0000000000000000000002 /* ProxyConfig.swift */; };
+		4E0000000000000000000013 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E0000000000000000000003 /* SettingsStore.swift */; };
+		AA00000100000001AABB000F /* SpoofProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000C /* SpoofProfile.swift */; };
 		AA00000100000001AABB0010 /* BackgroundAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */; };
 		AA00000100000001AABB0011 /* ShadowsocksCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0011 /* ShadowsocksCrypto.swift */; };
 		AA00000100000001AABB0012 /* ShadowsocksStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0012 /* ShadowsocksStream.swift */; };
@@ -65,7 +68,10 @@
 		AA00000200000001AABB0009 /* PatternMask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatternMask.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000A /* DoHResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoHResolver.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000B /* DNSCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSCache.swift; sourceTree = "<group>"; };
-		AA00000200000001AABB000C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		4E0000000000000000000001 /* DomainMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainMatcher.swift; sourceTree = "<group>"; };
+		4E0000000000000000000002 /* ProxyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyConfig.swift; sourceTree = "<group>"; };
+		4E0000000000000000000003 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		AA00000200000001AABB000C /* SpoofProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoofProfile.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB000E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0010 /* BackgroundAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundAudioPlayer.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0011 /* ShadowsocksCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowsocksCrypto.swift; sourceTree = "<group>"; };
@@ -171,7 +177,10 @@
 		AA00000300000001AABB0004 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
-				AA00000200000001AABB000C /* AppSettings.swift */,
+				4E0000000000000000000001 /* DomainMatcher.swift */,
+				4E0000000000000000000002 /* ProxyConfig.swift */,
+				4E0000000000000000000003 /* SettingsStore.swift */,
+				AA00000200000001AABB000C /* SpoofProfile.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -259,7 +268,10 @@
 				7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */,
 				7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */,
 				AA00000100000001AABB000E /* SettingsView.swift in Sources */,
-				AA00000100000001AABB000F /* AppSettings.swift in Sources */,
+				AA00000100000001AABB000F /* SpoofProfile.swift in Sources */,
+				4E0000000000000000000011 /* DomainMatcher.swift in Sources */,
+				4E0000000000000000000012 /* ProxyConfig.swift in Sources */,
+				4E0000000000000000000013 /* SettingsStore.swift in Sources */,
 				7FE5219A2F749F3300F0BA0C /* SOCKS5Parser.swift in Sources */,
 				9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */,
 				FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */,

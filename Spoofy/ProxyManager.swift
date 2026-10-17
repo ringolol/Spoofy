@@ -16,23 +16,43 @@ final class ProxyManager: ObservableObject {
     @Published var status: Status = .stopped
     @Published var errorMessage: String?
 
+    /// The listener's settings, while a server exists. Port and LAN access need a restart.
+    @Published private(set) var listening: (port: UInt16, allowLANAccess: Bool)?
+
+    private let settings: SettingsStore
     private var proxyServer: ProxyServer?
     private let audioPlayer = BackgroundAudioPlayer()
 
     var isRunning: Bool { status == .running }
+
+    /// True while running with a port or LAN setting that differs from the listener's.
+    var needsRestart: Bool {
+        guard let listening else { return false }
+        return listening.port != settings.proxyPort || listening.allowLANAccess != settings.allowLANAccess
+    }
+
+    init(settings: SettingsStore) {
+        self.settings = settings
+        // Routing changes reach the running server, including its open connections (U13).
+        settings.onChange = { [weak self] in
+            guard let self, let server = self.proxyServer else { return }
+            server.update(settings.snapshot)
+        }
+    }
 
     func start() {
         guard status == .stopped || status == .error else { return }
         errorMessage = nil
         status = .starting
 
-        let settings = AppSettings.shared
-        let port = settings.proxyPort
+        let config = settings.snapshot
+        let port = config.port
 
         audioPlayer.start()
 
-        let server = ProxyServer(port: port, settings: settings)
+        let server = ProxyServer(config: config)
         self.proxyServer = server
+        listening = (config.port, config.allowLANAccess)
 
         server.onFailure = { [weak self, weak server] error in
             Task { @MainActor [weak self] in
@@ -60,6 +80,7 @@ final class ProxyManager: ObservableObject {
     private func fail(with error: Error) {
         proxyServer?.stop()
         proxyServer = nil
+        listening = nil
         audioPlayer.stop()
         status = .error
         errorMessage = error.localizedDescription
@@ -68,6 +89,7 @@ final class ProxyManager: ObservableObject {
     func stop() {
         proxyServer?.stop()
         proxyServer = nil
+        listening = nil
         audioPlayer.stop()
         status = .stopped
         errorMessage = nil
