@@ -16,7 +16,10 @@ TODAY = $(shell date +%Y-%m-%d)
 
 TEAM_ID := $(shell grep "DEVELOPMENT_TEAM" $(PROJECT)/project.pbxproj | grep -v '""' | head -n 1 | awk -F' = ' '{print $$2}' | tr -d ' ;"')
 
-.PHONY: build build-macos install-macos release release-alpha _do-release clean
+.PHONY: build build-macos install-macos release release-alpha _do-release clean test
+
+test:
+	swift test
 
 build:
 	@echo "Archiving $(SCHEME)..."
