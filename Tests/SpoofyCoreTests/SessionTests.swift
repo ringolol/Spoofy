@@ -342,6 +342,7 @@ final class SessionTests: XCTestCase {
         XCTAssertTrue(started.isDefaultProfile)
         XCTAssertEqual(started.outbound, .desync(DesyncParameters(mode: .firstByte, chunkSize: SpoofProfile.makeDefault().chunkSize,
                                                                   recordFragmentation: false)))
+        XCTAssertTrue(started.fingerprint.hasPrefix("split|firstByte|"), started.fingerprint)
         XCTAssertNotNil(scope.queue.sync { scope.trace })
         XCTAssertEqual(observer.summaries.count, 0, "still open")
 

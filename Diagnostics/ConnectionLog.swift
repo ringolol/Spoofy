@@ -135,7 +135,7 @@ struct HostRecord: Sendable {
         self.lastSeen = firstSeen
     }
 
-    fileprivate mutating func add(_ trace: ClassifiedTrace) {
+    mutating func add(_ trace: ClassifiedTrace) {
         let summary = trace.summary
         lastSeen = max(lastSeen, summary.endedDate)
         ports.insert(summary.start.port)

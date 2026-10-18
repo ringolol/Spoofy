@@ -117,6 +117,32 @@ struct SpoofProfile: Identifiable, Equatable, Codable {
         )
     }
 
+    /// A custom profile with the defaults "Add Profile" has always used.
+    static func makeCustom(name: String, domainPatterns: [String], routeMode: RouteMode = .split,
+                           splitMode: SplitMode = .none, dohEnabled: Bool = false) -> SpoofProfile {
+        SpoofProfile(
+            id: UUID(), name: name, isEnabled: true, domainPatterns: domainPatterns,
+            routeMode: routeMode, vpnType: .outline, outlineConfig: nil,
+            splitMode: splitMode, chunkSize: 5, tlsRecordFragmentation: false,
+            dohEnabled: dohEnabled, dohServerURL: makeDefault().dohServerURL, isDefault: false,
+            inheritDoH: true, inheritOutlineConfig: true
+        )
+    }
+
+    /// The fields that decide how a connection is carried (network-scanner plan §6.4). Taken from
+    /// a resolved profile, so evidence gathered under other settings can be told apart.
+    var routingFingerprint: String {
+        var parts = [routeMode.rawValue]
+        switch routeMode {
+        case .split:
+            parts += [splitMode.rawValue, String(chunkSize), tlsRecordFragmentation ? "tls" : "-"]
+        case .vpn:
+            parts.append(outlineConfig.map { "\($0.host):\($0.port)" } ?? "-")
+        }
+        parts.append(dohEnabled ? dohServerURL : "-")
+        return parts.joined(separator: "|")
+    }
+
     // Custom Decodable for backward compatibility with old settings
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)

@@ -15,11 +15,14 @@ final class SettingsStore: ObservableObject {
         static let proxyPort = "proxyPort"
         static let allowLANAccess = "allowLANAccess"
         static let backupPrefix = "spoofProfiles.backup."
+        static let scannerHiddenHosts = "scannerHiddenHosts"
     }
 
     @Published private(set) var profiles: [SpoofProfile]
     @Published private(set) var proxyPort: UInt16
     @Published private(set) var allowLANAccess: Bool
+    /// `DomainMatcher` patterns the scanner leaves out (network-scanner plan §7.3). Not exported.
+    @Published private(set) var hiddenHosts: [String]
     /// Set when the stored profiles could not be decoded. The original blob is kept under
     /// `backupKey` and is not overwritten until the user changes something.
     @Published private(set) var loadError: String?
@@ -51,6 +54,7 @@ final class SettingsStore: ObservableObject {
         let storedPort = defaults.object(forKey: Key.proxyPort) as? Int
         proxyPort = storedPort.flatMap { UInt16(exactly: $0) }.flatMap { $0 == 0 ? nil : $0 } ?? Self.defaultPort
         allowLANAccess = defaults.bool(forKey: Key.allowLANAccess)
+        hiddenHosts = defaults.stringArray(forKey: Key.scannerHiddenHosts) ?? []
     }
 
     var master: SpoofProfile { profiles.first { $0.isDefault } ?? .makeDefault() }
@@ -76,16 +80,32 @@ final class SettingsStore: ObservableObject {
     /// Adds an empty custom profile in front of Master and returns it.
     @discardableResult
     func addProfile() -> SpoofProfile {
-        let profile = SpoofProfile(
-            id: UUID(), name: "", isEnabled: true, domainPatterns: [],
-            routeMode: .split, vpnType: .outline, outlineConfig: nil,
-            splitMode: .none, chunkSize: 5, tlsRecordFragmentation: false,
-            dohEnabled: false, dohServerURL: SpoofProfile.makeDefault().dohServerURL, isDefault: false,
-            inheritDoH: true, inheritOutlineConfig: true
-        )
+        addProfile(.makeCustom(name: "", domainPatterns: []))
+    }
+
+    /// Adds `profile` in front of Master, always as a custom profile.
+    @discardableResult
+    func addProfile(_ profile: SpoofProfile) -> SpoofProfile {
+        var profile = profile
+        profile.isDefault = false
         profiles = customProfiles + [profile] + [master]
         commitProfiles()
         return profile
+    }
+
+    /// Appends the patterns the profile doesn't have yet (case-insensitive, blanks skipped) in
+    /// one change. Returns how many were added.
+    @discardableResult
+    func addPatterns(_ patterns: [String], to id: UUID) -> Int {
+        guard let index = profiles.firstIndex(where: { $0.id == id }) else { return 0 }
+        var seen = Set(profiles[index].domainPatterns.map { $0.lowercased() })
+        let added = patterns
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+        guard !added.isEmpty else { return 0 }
+        profiles[index].domainPatterns += added
+        commitProfiles()
+        return added.count
     }
 
     /// Master is never deleted.
@@ -120,6 +140,13 @@ final class SettingsStore: ObservableObject {
         allowLANAccess = allow
         defaults.set(allow, forKey: Key.allowLANAccess)
         onChange?()
+    }
+
+    /// Display only: the running server doesn't care, so no `onChange`.
+    func setHiddenHosts(_ patterns: [String]) {
+        guard patterns != hiddenHosts else { return }
+        hiddenHosts = patterns
+        defaults.set(patterns, forKey: Key.scannerHiddenHosts)
     }
 
     private func commitProfiles() {

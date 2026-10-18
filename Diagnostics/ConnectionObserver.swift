@@ -27,6 +27,8 @@ struct TraceStart: Sendable {
     let profileName: String
     let isDefaultProfile: Bool
     let outbound: TraceOutbound
+    /// `routingFingerprint` of the profile the route used (§6.4).
+    var fingerprint = ""
 }
 
 /// `OutboundKind` without the Outline password or prefix, for keeping and showing.

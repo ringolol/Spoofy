@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */; };
 		452E2CDC62C91C371BD470CC /* ConnectionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */; };
+		93F706FA32B5BFDD9A83BBA7 /* ScannerSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0BA51075483282A0B5EC52 /* ScannerSnapshot.swift */; };
+		71E8D5FC09F62146030B278A /* NetworkState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E5A9E6A1E9D996239EA256 /* NetworkState.swift */; };
+		FE498CCC4B2369EF67B16D39 /* HostVerdict.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57C3F4E72698C3E0E661CF3 /* HostVerdict.swift */; };
 		96DA2AA064227F0DBA6C7F14 /* TraceClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 587B8552CFD42FB2AADBC132 /* TraceClassifier.swift */; };
 		F91B4503F12B95E32CA85B61 /* BaseDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37821E107D070E23D5D3B6F /* BaseDomain.swift */; };
 		C571DEFBAFAFB09AD5569CD7 /* TransportReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7515537AAE1FEF6494435912 /* TransportReports.swift */; };
@@ -55,6 +58,9 @@
 /* Begin PBXFileReference section */
 		BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadSniffer.swift; sourceTree = "<group>"; };
 		C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionLog.swift; sourceTree = "<group>"; };
+		BA0BA51075483282A0B5EC52 /* ScannerSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerSnapshot.swift; sourceTree = "<group>"; };
+		18E5A9E6A1E9D996239EA256 /* NetworkState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkState.swift; sourceTree = "<group>"; };
+		A57C3F4E72698C3E0E661CF3 /* HostVerdict.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostVerdict.swift; sourceTree = "<group>"; };
 		587B8552CFD42FB2AADBC132 /* TraceClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceClassifier.swift; sourceTree = "<group>"; };
 		D37821E107D070E23D5D3B6F /* BaseDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseDomain.swift; sourceTree = "<group>"; };
 		7515537AAE1FEF6494435912 /* TransportReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportReports.swift; sourceTree = "<group>"; };
@@ -117,6 +123,9 @@
 			children = (
 				BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */,
 				C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */,
+				BA0BA51075483282A0B5EC52 /* ScannerSnapshot.swift */,
+				18E5A9E6A1E9D996239EA256 /* NetworkState.swift */,
+				A57C3F4E72698C3E0E661CF3 /* HostVerdict.swift */,
 				587B8552CFD42FB2AADBC132 /* TraceClassifier.swift */,
 				D37821E107D070E23D5D3B6F /* BaseDomain.swift */,
 				7515537AAE1FEF6494435912 /* TransportReports.swift */,
@@ -308,6 +317,9 @@
 			files = (
 				40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */,
 				452E2CDC62C91C371BD470CC /* ConnectionLog.swift in Sources */,
+				93F706FA32B5BFDD9A83BBA7 /* ScannerSnapshot.swift in Sources */,
+				71E8D5FC09F62146030B278A /* NetworkState.swift in Sources */,
+				FE498CCC4B2369EF67B16D39 /* HostVerdict.swift in Sources */,
 				96DA2AA064227F0DBA6C7F14 /* TraceClassifier.swift in Sources */,
 				F91B4503F12B95E32CA85B61 /* BaseDomain.swift in Sources */,
 				C571DEFBAFAFB09AD5569CD7 /* TransportReports.swift in Sources */,

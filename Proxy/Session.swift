@@ -251,7 +251,7 @@ final class Session {
                    inbound: inbound ?? .http, host: target.host.lowercased(), port: target.port,
                    isIPLiteral: ServerConnector.isIPLiteral(target.host), profileID: decision.profile.id,
                    profileName: decision.profile.name, isDefaultProfile: decision.profile.isDefault,
-                   outbound: outbound)
+                   outbound: outbound, fingerprint: decision.profile.routingFingerprint)
     }
 
     private func connected(_ upstream: any ConnectionProtocol, request: InboundRequest, outbound: OutboundKind) {

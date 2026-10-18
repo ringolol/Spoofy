@@ -263,4 +263,95 @@ final class SettingsStoreTests: XCTestCase {
             XCTAssertTrue(message.contains("Port 80"), message)
         }
     }
+
+    // MARK: - Scanner additions (network-scanner plan §7.3, §7.4)
+
+    func testMakeCustomHasTheAddProfileDefaults() {
+        let profile = SpoofProfile.makeCustom(name: "YouTube", domainPatterns: ["*.youtube.com"])
+        XCTAssertFalse(profile.isDefault)
+        XCTAssertTrue(profile.isEnabled)
+        XCTAssertEqual(profile.routeMode, .split)
+        XCTAssertEqual(profile.splitMode, .none)
+        XCTAssertEqual(profile.chunkSize, 5)
+        XCTAssertTrue(profile.inheritDoH)
+        XCTAssertTrue(profile.inheritOutlineConfig)
+        let vpn = SpoofProfile.makeCustom(name: "v", domainPatterns: [], routeMode: .vpn, splitMode: .sni, dohEnabled: true)
+        XCTAssertEqual(vpn.routeMode, .vpn)
+        XCTAssertEqual(vpn.splitMode, .sni)
+        XCTAssertTrue(vpn.dohEnabled)
+        let empty = store.addProfile()
+        XCTAssertEqual(empty.name, "")
+        XCTAssertEqual(empty.splitMode, .none)
+    }
+
+    func testAddProfileInsertsBeforeMaster() {
+        var changes = 0
+        store.onChange = { changes += 1 }
+        let first = store.addProfile()
+        let added = store.addProfile(.makeCustom(name: "YouTube", domainPatterns: ["*.youtube.com"]))
+        XCTAssertEqual(store.profiles.map(\.id), [first.id, added.id, store.master.id])
+        XCTAssertEqual(changes, 2)
+        var sneaky = SpoofProfile.makeCustom(name: "x", domainPatterns: [])
+        sneaky.isDefault = true
+        store.addProfile(sneaky)
+        XCTAssertEqual(store.profiles.filter(\.isDefault).count, 1, "can't add a second Master")
+    }
+
+    func testAddPatternsSkipsDuplicatesInOneChange() throws {
+        let profile = store.addProfile(.makeCustom(name: "YouTube", domainPatterns: ["*.youtube.com"]))
+        var changes = 0
+        store.onChange = { changes += 1 }
+        let added = store.addPatterns(["*.YouTube.com", "*.ytimg.com", "*.ytimg.com", " ", "youtu.be"], to: profile.id)
+        XCTAssertEqual(added, 2)
+        XCTAssertEqual(store.profiles.first { $0.id == profile.id }?.domainPatterns, ["*.youtube.com", "*.ytimg.com", "youtu.be"])
+        XCTAssertEqual(changes, 1)
+        XCTAssertEqual(store.addPatterns(["*.ytimg.com"], to: profile.id), 0)
+        XCTAssertEqual(store.addPatterns(["a.com"], to: UUID()), 0)
+        XCTAssertEqual(changes, 1, "nothing added, nothing reported")
+        XCTAssertEqual(SettingsStore(defaults: defaults).profiles.first { $0.id == profile.id }?.domainPatterns.count, 3)
+    }
+
+    func testHiddenHostsPersistOutsideExport() throws {
+        var changes = 0
+        store.onChange = { changes += 1 }
+        XCTAssertEqual(store.hiddenHosts, [])
+        store.setHiddenHosts(["*.apple.com", "telemetry.example"])
+        XCTAssertEqual(SettingsStore(defaults: defaults).hiddenHosts, ["*.apple.com", "telemetry.example"])
+        XCTAssertEqual(changes, 0, "hiding doesn't touch routing")
+        XCTAssertFalse(try XCTUnwrap(store.exportJSON()).contains("apple"))
+    }
+}
+
+final class RoutingFingerprintTests: XCTestCase {
+    func testRoutingFieldsChangeTheFingerprint() {
+        let base = SpoofProfile.makeCustom(name: "a", domainPatterns: ["a.com"], splitMode: .sni)
+        var renamed = base
+        renamed.name = "b"
+        renamed.domainPatterns = ["b.com"]
+        renamed.isEnabled = false
+        XCTAssertEqual(renamed.routingFingerprint, base.routingFingerprint, "names and patterns don't route")
+
+        var changes: [(inout SpoofProfile) -> Void] = [
+            { $0.splitMode = .chunk }, { $0.chunkSize = 7 }, { $0.tlsRecordFragmentation = true },
+            { $0.dohEnabled = true },
+        ]
+        changes.append { $0.routeMode = .vpn }
+        for change in changes {
+            var changed = base
+            change(&changed)
+            XCTAssertNotEqual(changed.routingFingerprint, base.routingFingerprint)
+        }
+
+        var doh = base
+        doh.dohEnabled = true
+        var otherURL = doh
+        otherURL.dohServerURL = "https://dns.google/dns-query"
+        XCTAssertNotEqual(doh.routingFingerprint, otherURL.routingFingerprint)
+
+        var vpn = base
+        vpn.routeMode = .vpn
+        vpn.outlineConfig = OutlineServerConfig(host: "1.2.3.4", port: 8388, password: "secret", cipher: .aes256Gcm)
+        XCTAssertTrue(vpn.routingFingerprint.contains("1.2.3.4:8388"))
+        XCTAssertFalse(vpn.routingFingerprint.contains("secret"))
+    }
 }
