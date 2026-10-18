@@ -422,4 +422,11 @@ final class ConnectionTraceTests: XCTestCase {
         XCTAssertEqual(summary.transfer.smoothedRTT, 0.045)
         XCTAssertEqual(summary.rtt, 0.030)
     }
+
+    /// A crash on macOS 26: the system's count plus an earlier one overflowed UInt64 and trapped.
+    func testRetransmitsSaturateInsteadOfOverflowing() {
+        var info = TransferInfo(retransmittedBytes: 517)
+        info.add(TransferInfo(retransmittedBytes: .max))
+        XCTAssertEqual(info.retransmittedBytes, .max)
+    }
 }

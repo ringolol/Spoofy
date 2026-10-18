@@ -32,10 +32,14 @@ struct TransferInfo: Equatable, Sendable {
     var minimumRTT: TimeInterval?
     var smoothedRTT: TimeInterval?
 
-    /// Folds in a later period: retransmits add up, the minimum RTT is the smaller, the smoothed
-    /// RTT is the latest. A zero RTT means "not measured".
+    /// Folds in a later period: retransmits add up (saturating; the system's count can be junk,
+    /// and an overflow traps), the minimum RTT is the smaller, the smoothed RTT is the latest. A
+    /// zero RTT means "not measured".
     mutating func add(_ other: TransferInfo) {
-        if let more = other.retransmittedBytes { retransmittedBytes = (retransmittedBytes ?? 0) + more }
+        if let more = other.retransmittedBytes {
+            let (sum, overflow) = (retransmittedBytes ?? 0).addingReportingOverflow(more)
+            retransmittedBytes = overflow ? .max : sum
+        }
         if let rtt = other.minimumRTT, rtt > 0 { minimumRTT = min(minimumRTT ?? rtt, rtt) }
         if let rtt = other.smoothedRTT, rtt > 0 { smoothedRTT = rtt }
     }
