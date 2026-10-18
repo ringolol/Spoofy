@@ -99,6 +99,10 @@ private struct ScannerScreen: View {
                 editMode = .inactive
             } onClose: {
                 sheet = nil
+                // On the Mac, SwiftUI queues the dismissal as a run loop block during its update and
+                // doesn't wake the run loop, so the sheet stayed up until the next mouse move or
+                // timer (seconds, seen in `sample`). A main-queue dispatch wakes it.
+                DispatchQueue.main.async { CFRunLoopWakeUp(CFRunLoopGetMain()) }
             }
         }
         .overlay(alignment: .bottom) {
