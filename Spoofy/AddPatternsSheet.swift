@@ -134,8 +134,9 @@ struct AddPatternsSheet: View {
                 Picker("Split Mode", selection: $draft.splitMode) {
                     ForEach(SplitMode.allCases) { Text($0.displayName).tag($0) }
                 }
-                Toggle("DoH", isOn: $draft.dohEnabled)
             }
+            // Both routes use it: VPN resolves locally and sends the address to the Outline server.
+            Toggle("DoH", isOn: $draft.dohEnabled)
         } header: {
             Text("New profile")
         } footer: {
