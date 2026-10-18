@@ -17,7 +17,7 @@ let package = Package(
                 "CLAUDE.md", "LICENSE", "Makefile", "README.md", "config.yml", "docker-compose.yml",
                 "redis.conf", "icon.png", "icon_macos.png",
             ],
-            sources: ["Proxy", "TLS", "DNS", "Shadowsocks", "Shared"]
+            sources: ["Proxy", "TLS", "DNS", "Shadowsocks", "Shared", "Diagnostics"]
         ),
         .testTarget(
             name: "SpoofyCoreTests",

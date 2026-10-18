@@ -32,6 +32,7 @@ Proxy/              proxy core
 TLS/                ClientHello parsing, ClientHelloReader, TLSDesyncer (split modes), PatternMask
 DNS/                DoHResolver (wire format), DNSCache
 Shadowsocks/        AEAD crypto, ShadowsocksAEADCodec (framing, no I/O), ShadowsocksStream (I/O), OutlineAccessKey (ss:// parsing)
+Diagnostics/        network scanner core: payload sniffing, connection trace, classifier, log (plans/network-scanner.md)
 Shared/             settings and config
   SpoofProfile.swift  profile model (UserDefaults JSON shape; keep it compatible)
   SettingsStore.swift @MainActor store for the UI
@@ -49,7 +50,7 @@ docker-compose.yml, config.yml   local Outline/shadowbox server for interop test
 
 ### Rules that the build enforces or relies on
 
-- **Core boundary.** `Proxy/`, `TLS/`, `DNS/`, `Shadowsocks/` and `Shared/` import only Foundation, Network, CryptoKit, CommonCrypto and os.log. No UIKit, SwiftUI or AVFoundation; `swift test` breaks if you add one. UI-only code goes in `Spoofy/`.
+- **Core boundary.** `Proxy/`, `TLS/`, `DNS/`, `Shadowsocks/`, `Shared/` and `Diagnostics/` import only Foundation, Network, CryptoKit, CommonCrypto and os.log. No UIKit, SwiftUI or AVFoundation; `swift test` breaks if you add one. UI-only code goes in `Spoofy/`.
 - **Double membership.** The Xcode app target compiles the core files directly (it does not depend on the package), and the project has no synchronized folders. A new core file is picked up by the package automatically but **must be added to the app target in `project.pbxproj`** by hand. A new file at the repo root goes into `exclude:` in `Package.swift`.
 - Tests use `@testable import SpoofyCore`, so `internal` is enough; don't make things `public` for tests.
 - **Concurrency** (plan §6.1): everything a session owns runs on its serial queue, so session state needs no locks. Server state lives on `serverQueue`. No `DispatchQueue.global()`, and no state touched off its owner queue.

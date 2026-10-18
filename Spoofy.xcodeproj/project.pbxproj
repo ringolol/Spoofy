@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */; };
 		09FFCA969FA6759926E5ADD6 /* DNSCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000B /* DNSCache.swift */; };
 		3FEFF257708CE9D7C1472D22 /* ConnectionRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0006 /* ConnectionRelay.swift */; };
 		449947202C32DB536E9EF6D1 /* HTTPHeadParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0003 /* HTTPHeadParser.swift */; };
@@ -45,6 +46,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadSniffer.swift; sourceTree = "<group>"; };
 		30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProxyManager.swift; sourceTree = "<group>"; };
 		7F84E1552F5F370A00EA1BB8 /* Spoofy.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Spoofy.entitlements; sourceTree = "<group>"; };
 		7FA87CB52F5F2B4B00819091 /* Spoofy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spoofy.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -96,6 +98,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		60DC7C17351BC7CDE0A5F6F9 /* Diagnostics */ = {
+			isa = PBXGroup;
+			children = (
+				BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */,
+			);
+			path = Diagnostics;
+			sourceTree = "<group>";
+		};
 		7FA87CAC2F5F2B4B00819091 = {
 			isa = PBXGroup;
 			children = (
@@ -105,6 +115,7 @@
 				AA00000300000001AABB0003 /* DNS */,
 				AA00000300000001AABB0005 /* Shadowsocks */,
 				AA00000300000001AABB0004 /* Shared */,
+				60DC7C17351BC7CDE0A5F6F9 /* Diagnostics */,
 				7FA87CB62F5F2B4B00819091 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -274,6 +285,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */,
 				7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */,
 				7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */,
 				AA00000100000001AABB000E /* SettingsView.swift in Sources */,
