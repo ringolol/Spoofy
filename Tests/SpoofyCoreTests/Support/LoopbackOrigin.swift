@@ -11,6 +11,10 @@ final class LoopbackOrigin {
         case recordAll
         /// Sends a banner on accept, then records.
         case serverFirst(Data)
+        /// Answers the first chunk with this reply, then closes its side (FIN).
+        case replyAndFinish(Data)
+        /// Aborts the connection on the first chunk (RST).
+        case resetOnData
     }
 
     private(set) var port: UInt16 = 0
@@ -19,6 +23,7 @@ final class LoopbackOrigin {
     private let queue = DispatchQueue(label: "LoopbackOrigin")
     private let lock = NSLock()
     private var connections: [NWConnection] = []
+    private var answered: Set<ObjectIdentifier> = []
     private var _received = Data()
     private var _acceptCount = 0
     private var _closedCount = 0
@@ -80,8 +85,19 @@ final class LoopbackOrigin {
             guard let self else { return }
             if let data, !data.isEmpty {
                 self.lock.withLock { self._received.append(data) }
-                if case .echo = self.behaviour {
+                switch self.behaviour {
+                case .echo:
                     conn.send(content: data, completion: .idempotent)
+                case .replyAndFinish(let reply):
+                    // Once per connection: a desynced hello arrives in several segments.
+                    if self.lock.withLock({ self.answered.insert(ObjectIdentifier(conn)).inserted }) {
+                        conn.send(content: reply, contentContext: .finalMessage, isComplete: true, completion: .idempotent)
+                    }
+                case .resetOnData:
+                    conn.forceCancel()
+                    return
+                case .recordAll, .serverFirst:
+                    break
                 }
             }
             if isComplete || error != nil {

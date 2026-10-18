@@ -14,6 +14,23 @@ protocol ConnectionProtocol: AnyObject {
 
 extension NWConnection: ConnectionProtocol {}
 
+/// Watches a relay for the scanner (network-scanner plan §3). All calls on the relay's queue.
+protocol RelayObserver: AnyObject {
+    /// After the write completed. `prefix` is the start of the chunk (up to `observedPrefix` bytes).
+    func relayed(_ count: Int, fromLeft: Bool, prefix: Data)
+    /// Every event that ends a direction; the observer keeps the first.
+    func relayEnded(_ event: RelayEndEvent)
+    /// Every `idleCheckInterval`.
+    func relayTick(now: UInt64)
+}
+
+enum RelayEndEvent: Equatable {
+    case readError(fromLeft: Bool, NWError)
+    case eof(fromLeft: Bool)
+    case writeError(toLeft: Bool, NWError)
+    case idleTimeout
+}
+
 /// Bidirectional relay between two connections.
 /// Reads from source and writes to destination in a loop until either side closes or errors.
 /// It logs nothing per packet unless built with `DEBUG_TRACE` (M3); the session logs one line at
@@ -22,7 +39,9 @@ final class ConnectionRelay {
     private static let bufferSize = 32768 // 32KB (matches Go's io.CopyBuffer)
     private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "Relay")
     private static let idleTimeoutSeconds: Double = 120
-    private static let idleCheckIntervalSeconds: Int = 15
+    static let defaultIdleCheckInterval: DispatchTimeInterval = .seconds(15)
+    /// Enough for `PayloadSniffer` to find a `Host` header.
+    static let observedPrefix = 4096
 
     struct Stats: Equatable {
         var bytesFromLeft: Int
@@ -40,8 +59,9 @@ final class ConnectionRelay {
         label: String = "",
         queue: DispatchQueue,
         idleTimeout: Double = idleTimeoutSeconds,
-        idleCheckInterval: DispatchTimeInterval = .seconds(idleCheckIntervalSeconds),
+        idleCheckInterval: DispatchTimeInterval = defaultIdleCheckInterval,
         firstLeftReceive: ((@escaping ReceiveHandler) -> Void)? = nil,
+        observer: RelayObserver? = nil,
         completion: @escaping (Stats) -> Void
     ) {
         trace("Relay started \(label)")
@@ -65,7 +85,9 @@ final class ConnectionRelay {
             repeating: idleCheckInterval
         )
         timer.setEventHandler {
+            observer?.relayTick(now: DispatchTime.now().uptimeNanoseconds)
             if activity.secondsSinceLast() > idleTimeout {
+                observer?.relayEnded(.idleTimeout)
                 timer.cancel()
                 finish(true)
             }
@@ -74,12 +96,13 @@ final class ConnectionRelay {
 
         group.enter()
         pipe(from: left, to: right, label: "\(label) client→server", activity: activity, fromLeft: true,
-             firstReceive: firstLeftReceive) {
+             observer: observer, firstReceive: firstLeftReceive) {
             group.leave()
         }
 
         group.enter()
-        pipe(from: right, to: left, label: "\(label) server→client", activity: activity, fromLeft: false) {
+        pipe(from: right, to: left, label: "\(label) server→client", activity: activity, fromLeft: false,
+             observer: observer) {
             group.leave()
         }
 
@@ -96,6 +119,7 @@ final class ConnectionRelay {
         label: String,
         activity: RelayActivity,
         fromLeft: Bool,
+        observer: RelayObserver?,
         firstReceive: ((@escaping ReceiveHandler) -> Void)? = nil,
         completion: @escaping () -> Void
     ) {
@@ -105,6 +129,7 @@ final class ConnectionRelay {
         receive { content, _, isComplete, error in
             if let error = error {
                 trace("\(label) read error: \(error.localizedDescription)")
+                observer?.relayEnded(.readError(fromLeft: fromLeft, error))
                 dest.cancel()
                 completion()
                 return
@@ -116,23 +141,27 @@ final class ConnectionRelay {
                 dest.send(content: data, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { sendError in
                     if let sendError = sendError {
                         trace("\(label) write error: \(sendError.localizedDescription)")
+                        observer?.relayEnded(.writeError(toLeft: !fromLeft, sendError))
                         // Cancel both: the opposite pipe is parked in receive on `dest` (N14).
                         source.cancel()
                         dest.cancel()
                         completion()
                         return
                     }
-                    // Continue reading
-                    pipe(from: source, to: dest, label: label, activity: activity, fromLeft: fromLeft, completion: completion)
+                    observer?.relayed(data.count, fromLeft: fromLeft, prefix: data.prefix(observedPrefix))
+                    pipe(from: source, to: dest, label: label, activity: activity, fromLeft: fromLeft,
+                         observer: observer, completion: completion)
                 })
             } else if isComplete {
                 trace("\(label) complete (isComplete=true, data=nil/empty)")
+                observer?.relayEnded(.eof(fromLeft: fromLeft))
                 dest.cancel()
                 completion()
             } else {
                 // No data, not complete - continue
                 trace("\(label) empty read, retrying")
-                pipe(from: source, to: dest, label: label, activity: activity, fromLeft: fromLeft, completion: completion)
+                pipe(from: source, to: dest, label: label, activity: activity, fromLeft: fromLeft,
+                     observer: observer, completion: completion)
             }
         }
     }

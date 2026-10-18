@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */; };
+		C571DEFBAFAFB09AD5569CD7 /* TransportReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7515537AAE1FEF6494435912 /* TransportReports.swift */; };
+		F00F41E99E4B7B72E8EEF41B /* DetectionConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B443DAC90E2A6EF22A337FBF /* DetectionConfig.swift */; };
 		27179ECA4AC9C4E68E346465 /* ConnectionTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FB4C6AA51DA836556366AB7 /* ConnectionTrace.swift */; };
 		9ABE40A1EF2A7C754CAB5C76 /* ConnectionObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3BD99181A3ACE237D51A08D /* ConnectionObserver.swift */; };
 		09FFCA969FA6759926E5ADD6 /* DNSCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000B /* DNSCache.swift */; };
@@ -49,6 +51,8 @@
 
 /* Begin PBXFileReference section */
 		BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadSniffer.swift; sourceTree = "<group>"; };
+		7515537AAE1FEF6494435912 /* TransportReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportReports.swift; sourceTree = "<group>"; };
+		B443DAC90E2A6EF22A337FBF /* DetectionConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionConfig.swift; sourceTree = "<group>"; };
 		3FB4C6AA51DA836556366AB7 /* ConnectionTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionTrace.swift; sourceTree = "<group>"; };
 		B3BD99181A3ACE237D51A08D /* ConnectionObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionObserver.swift; sourceTree = "<group>"; };
 		30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProxyManager.swift; sourceTree = "<group>"; };
@@ -106,6 +110,8 @@
 			isa = PBXGroup;
 			children = (
 				BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */,
+				7515537AAE1FEF6494435912 /* TransportReports.swift */,
+				B443DAC90E2A6EF22A337FBF /* DetectionConfig.swift */,
 				3FB4C6AA51DA836556366AB7 /* ConnectionTrace.swift */,
 				B3BD99181A3ACE237D51A08D /* ConnectionObserver.swift */,
 			);
@@ -292,6 +298,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */,
+				C571DEFBAFAFB09AD5569CD7 /* TransportReports.swift in Sources */,
+				F00F41E99E4B7B72E8EEF41B /* DetectionConfig.swift in Sources */,
 				27179ECA4AC9C4E68E346465 /* ConnectionTrace.swift in Sources */,
 				9ABE40A1EF2A7C754CAB5C76 /* ConnectionObserver.swift in Sources */,
 				7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */,

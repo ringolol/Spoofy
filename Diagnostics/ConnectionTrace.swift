@@ -10,29 +10,37 @@ import Network
 /// ```
 ///
 /// Phases only move forward: an event for an earlier phase is recorded but doesn't move it back.
-/// Of the terminal events the first wins; `finish` closes the trace and hands its summary on once.
+/// Of the terminal events the first wins. `finish` closes the trace; the summary goes to
+/// `onFinish` once, after the last transport report or `reportWait`, whichever comes first (§2.3).
 final class ConnectionTrace {
     static let maxAttempts = 4
+    static let downPrefixLength = 128
 
     let start: TraceStart
     private(set) var phase: TracePhase = .created
 
-    private let onFinish: (TraceSummary) -> Void
+    private let queue: DispatchQueue
+    private let clock: () -> UInt64
+    private let reportWait: TimeInterval
+    private var onFinish: ((TraceSummary) -> Void)?
     private var endReason: EndReason?
-    private var dnsStart: UInt64?
-    private var dnsEnd: UInt64?
-    private var dohIPs: [String]?
-    private var connectStart: UInt64?
-    private var connectEnd: UInt64?
-    private var connectedAddress: String?
-    private var attempts: [DialAttemptRecord] = []
+    private var fields = TraceFields()
 
-    init(_ start: TraceStart, onFinish: @escaping (TraceSummary) -> Void) {
+    private var reports: TransportReports?
+    private var pendingTransfer: PendingTransfer?
+    private var collectedEarly = false
+    private var lastUpAt: UInt64?
+    private var lastDownAt: UInt64?
+
+    init(_ start: TraceStart, queue: DispatchQueue,
+         clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+         reportWait: TimeInterval = 1, onFinish: @escaping (TraceSummary) -> Void) {
         self.start = start
+        self.queue = queue
+        self.clock = clock
+        self.reportWait = reportWait
         self.onFinish = onFinish
     }
-
-    private static func now() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
 
     private func advance(to next: TracePhase) {
         if next > phase { phase = next }
@@ -43,23 +51,23 @@ final class ConnectionTrace {
     /// The resolver (DoH) was asked about the target name.
     func dnsStarted() {
         guard phase != .ended else { return }
-        if dnsStart == nil { dnsStart = Self.now() }
+        if fields.dnsStart == nil { fields.dnsStart = clock() }
         advance(to: .resolving)
     }
 
     /// Nil or empty: DoH gave nothing and the system resolver takes over.
     func dnsFinished(ips: [String]?) {
         guard phase != .ended else { return }
-        dnsEnd = Self.now()
-        dohIPs = ips.flatMap { $0.isEmpty ? nil : $0 }
+        fields.dnsEnd = clock()
+        fields.dohIPs = ips.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     func attemptStarted(_ address: String) {
         guard phase != .ended else { return }
-        let now = Self.now()
-        if connectStart == nil { connectStart = now }
-        if attempts.count < Self.maxAttempts {
-            attempts.append(DialAttemptRecord(address: address, startedAt: now, outcome: nil))
+        let now = clock()
+        if fields.connectStart == nil { fields.connectStart = now }
+        if fields.attempts.count < Self.maxAttempts {
+            fields.attempts.append(DialAttemptRecord(address: address, startedAt: now, outcome: nil))
         }
         advance(to: .connecting)
     }
@@ -72,18 +80,46 @@ final class ConnectionTrace {
         settle(address, .cancelled)
     }
 
-    func attemptReady(_ address: String) {
+    /// `reports` is the connection that won; its transport reports fill in RTT, DNS and
+    /// retransmits (§2.3).
+    func attemptReady(_ address: String, reports: TransportReports? = nil) {
         guard phase != .ended else { return }
         settle(address, .ready)
-        connectEnd = Self.now()
-        connectedAddress = address
+        fields.connectEnd = clock()
+        fields.connectedAddress = address
         advance(to: .connected)
+        guard let reports else { return }
+        self.reports = reports
+        reports.establishment(queue: queue) { [self] info in
+            if let info { fields.establishment = info }
+        }
+        pendingTransfer = reports.startTransfer()
     }
 
     private func settle(_ address: String, _ outcome: DialAttemptRecord.Outcome) {
         guard phase != .ended,
-              let index = attempts.lastIndex(where: { $0.address == address && $0.outcome == nil }) else { return }
-        attempts[index].outcome = outcome
+              let index = fields.attempts.lastIndex(where: { $0.address == address && $0.outcome == nil }) else { return }
+        fields.attempts[index].outcome = outcome
+    }
+
+    // MARK: - First payload (§2.2)
+
+    /// What the session did with the first flight. Set before `payloadSent`, or before the
+    /// relay when the relay will carry the first bytes.
+    func setApplied(_ applied: AppliedStrategy) {
+        guard phase != .ended else { return }
+        fields.applied = applied
+    }
+
+    /// The first client bytes were fully written upstream: the moment the DPI saw them.
+    /// Nil `kind` leaves the kind to the relay (`FirstFlight.empty`).
+    func payloadSent(kind: PayloadKind?) {
+        guard phase != .ended, fields.payloadSentAt == nil else { return }
+        let now = clock()
+        fields.payloadSentAt = now
+        lastUpAt = now
+        if fields.payloadKind == nil { fields.payloadKind = kind }
+        advance(to: .payloadSent)
     }
 
     // MARK: - End
@@ -94,23 +130,100 @@ final class ConnectionTrace {
         endReason = reason
     }
 
-    /// Called once from `Session.close`; `fallback` applies when nothing ended the trace earlier.
+    /// Called once from `Session.close`, before the connections are cancelled; `fallback`
+    /// applies when nothing ended the trace earlier.
     func finish(fallback: EndReason) {
         guard phase != .ended else { return }
         var reason = endReason ?? fallback
         // Only DNS errors, and DoH (if on) had no answer either: the name never resolved.
-        if reason == .connectFailed(.dns), dohIPs == nil { reason = .dnsFailed }
+        if reason == .connectFailed(.dns), fields.dohIPs == nil { reason = .dnsFailed }
+        endReason = reason
         let reached = phase
         phase = .ended
-        for i in attempts.indices where attempts[i].outcome == nil {
-            attempts[i].outcome = .cancelled
+        fields.endedAt = clock()
+        for i in fields.attempts.indices where fields.attempts[i].outcome == nil {
+            fields.attempts[i].outcome = .cancelled
         }
-        onFinish(TraceSummary(start: start, reached: reached, endReason: reason, endedAt: Self.now(),
-                              dnsStart: dnsStart, dnsEnd: dnsEnd, dohIPs: dohIPs,
-                              connectStart: connectStart, connectEnd: connectEnd,
-                              connectedAddress: connectedAddress, attempts: attempts))
+        let summary = { [self] in
+            TraceSummary(start: start, reached: reached, endReason: reason, fields: fields)
+        }
+        guard let pending = pendingTransfer else { return deliver(summary()) }
+        pendingTransfer = nil
+        pending.collect(queue: queue) { [self] info in
+            fields.transfer.add(info)
+            deliver(summary())
+        }
+        queue.asyncAfter(deadline: .now() + reportWait) { [self] in deliver(summary()) }
+    }
+
+    private func deliver(_ summary: TraceSummary) {
+        guard let onFinish else { return }
+        self.onFinish = nil
+        reports = nil
+        onFinish(summary)
     }
 }
+
+/// All calls on the relay's queue, the session queue (network-scanner plan §3).
+extension ConnectionTrace: RelayObserver {
+    func relayed(_ count: Int, fromLeft: Bool, prefix: Data) {
+        guard phase != .ended else { return }
+        let now = clock()
+        if fromLeft {
+            fields.bytesUp += count
+            lastUpAt = now
+            if fields.payloadSentAt == nil {
+                fields.payloadSentAt = now
+                if fields.payloadKind == nil { fields.payloadKind = PayloadSniffer.sniff(client: prefix) }
+                advance(to: .payloadSent)
+            }
+        } else {
+            fields.bytesDown += count
+            lastDownAt = now
+            if fields.firstDownAt == nil {
+                fields.firstDownAt = now
+                fields.firstDownPrefix = Data(prefix.prefix(Self.downPrefixLength))
+                if fields.payloadKind == nil { fields.payloadKind = PayloadSniffer.sniff(server: prefix) }
+                advance(to: .responding)
+            }
+        }
+    }
+
+    func relayEnded(_ event: RelayEndEvent) {
+        end(event.endReason)
+    }
+
+    /// The stall check. It only observes; the client decides when to give up.
+    func relayTick(now: UInt64) {
+        guard phase != .ended, let sentAt = fields.payloadSentAt else { return }
+        let lastUp = lastUpAt ?? sentAt
+        let waitingOnServer = lastDownAt.map { lastUp > $0 } ?? true
+        let silence = Self.seconds(now &- max(lastUp, lastDownAt ?? sentAt))
+
+        if var stall = fields.stall {
+            if !stall.resumed, fields.bytesDown > stall.bytesDownAtStall {
+                // Data came back: not a freeze.
+                stall.resumed = true
+                fields.stall = stall
+            }
+        } else if waitingOnServer, silence >= DetectionConfig.stallSeconds {
+            fields.stall = StallInfo(at: now, bytesDownAtStall: fields.bytesDown,
+                                     phase: fields.firstDownAt == nil ? .beforeResponse : .midStream)
+        }
+
+        // §2.3 #1: a suspected hello blackhole is when the retransmit count is informative.
+        if fields.firstDownAt == nil, !collectedEarly,
+           Self.seconds(now &- sentAt) >= DetectionConfig.helloBlackholeMin,
+           let pending = pendingTransfer, let reports {
+            collectedEarly = true
+            pending.collect(queue: queue) { [self] info in fields.transfer.add(info) }
+            pendingTransfer = reports.startTransfer()
+        }
+    }
+
+    private static func seconds(_ nanos: UInt64) -> TimeInterval { Double(nanos) / 1e9 }
+}
+
 
 enum TracePhase: Int, Comparable, Sendable {
     case created, resolving, connecting, connected, payloadSent, responding, ended
@@ -183,24 +296,101 @@ enum ConnectError: Equatable, Sendable {
     }
 }
 
-/// Everything the trace recorded, handed to the observer once at `finish`. Timestamps are
-/// `DispatchTime` uptime nanoseconds.
+/// What a trace recorded. Timestamps are `DispatchTime` uptime nanoseconds.
+struct TraceFields: Sendable {
+    var dnsStart: UInt64?
+    var dnsEnd: UInt64?
+    /// Nil when DoH was off or gave nothing.
+    var dohIPs: [String]?
+    var connectStart: UInt64?
+    var connectEnd: UInt64?
+    var connectedAddress: String?
+    /// At most `ConnectionTrace.maxAttempts`, in start order. For the VPN route these are the
+    /// Outline server's addresses.
+    var attempts: [DialAttemptRecord] = []
+    var establishment = EstablishmentInfo()
+    var transfer = TransferInfo()
+    var payloadSentAt: UInt64?
+    /// Nil until the first payload in either direction.
+    var payloadKind: PayloadKind?
+    var applied: AppliedStrategy?
+    var firstDownAt: UInt64?
+    /// The first `ConnectionTrace.downPrefixLength` bytes from the server.
+    var firstDownPrefix: Data?
+    /// Relayed bytes; the first flight isn't counted.
+    var bytesUp = 0
+    var bytesDown = 0
+    var stall: StallInfo?
+    var endedAt: UInt64 = 0
+}
+
+/// Everything the trace recorded, handed to the observer once (§2.4). The recorded fields are
+/// read straight through (`summary.dohIPs`).
+@dynamicMemberLookup
 struct TraceSummary: Sendable {
     let start: TraceStart
     /// The last phase before `ended`.
     let reached: TracePhase
     let endReason: EndReason
-    let endedAt: UInt64
-    let dnsStart: UInt64?
-    let dnsEnd: UInt64?
-    /// Nil when DoH was off or gave nothing.
-    let dohIPs: [String]?
-    let connectStart: UInt64?
-    let connectEnd: UInt64?
-    let connectedAddress: String?
-    /// At most `ConnectionTrace.maxAttempts`, in start order. For the VPN route these are the
-    /// Outline server's addresses.
-    let attempts: [DialAttemptRecord]
+    let fields: TraceFields
+
+    subscript<T>(dynamicMember keyPath: KeyPath<TraceFields, T>) -> T { fields[keyPath: keyPath] }
+
+    /// `.none` when nothing was sent either way.
+    var kind: PayloadKind { fields.payloadKind ?? .none }
+
+    /// Handshake RTT, else the transport's minimum RTT.
+    var rtt: TimeInterval? { fields.establishment.tcpRTT ?? fields.transfer.minimumRTT }
+    /// Connect duration, a coarse stand-in for the RTT.
+    var connectDuration: TimeInterval? { Self.interval(fields.connectStart, fields.connectEnd) }
+    var tFirstDown: TimeInterval? { Self.interval(fields.payloadSentAt, fields.firstDownAt) }
+    var tEnd: TimeInterval? { Self.interval(fields.payloadSentAt, fields.endedAt) }
+
+    private static func interval(_ from: UInt64?, _ to: UInt64?) -> TimeInterval? {
+        guard let from, let to, to >= from else { return nil }
+        return Double(to - from) / 1e9
+    }
+}
+
+/// Silence while waiting on the server (§3). Observed, never acted on.
+struct StallInfo: Equatable, Sendable {
+    enum Phase: Equatable, Sendable { case beforeResponse, midStream }
+
+    let at: UInt64
+    let bytesDownAtStall: Int
+    let phase: Phase
+    /// Data came back later: not a freeze.
+    var resumed = false
+}
+
+/// What the session did with the first flight, next to the configured `TraceOutbound` (§2.5.3).
+enum AppliedStrategy: Equatable, Sendable {
+    case desync(DesyncParameters)
+    case passthrough(PassthroughReason)
+    case shadowsocks
+}
+
+enum PassthroughReason: Equatable, Sendable {
+    /// A desync route, but the first flight wasn't a ClientHello.
+    case notTLS
+    /// A desync route, but the client didn't speak first.
+    case clientSilent
+    case plainHTTP
+    /// Split mode `.none`.
+    case splitNone
+}
+
+extension RelayEndEvent {
+    var endReason: EndReason {
+        switch self {
+        case .readError(fromLeft: false, .posix(.ECONNRESET)): return .serverReset
+        case .readError(fromLeft: false, let error): return .serverError(ConnectError.code(error))
+        case .eof(fromLeft: false): return .serverFin
+        case .readError(fromLeft: true, _), .eof(fromLeft: true), .writeError(toLeft: true, _): return .clientClosed
+        case .writeError(toLeft: false, let error): return .serverError(ConnectError.code(error))
+        case .idleTimeout: return .idleTimeout
+        }
+    }
 }
 
 extension OutboundError {

@@ -273,7 +273,12 @@ final class LoopbackHarnessTests: XCTestCase {
         let summary = try XCTUnwrap(observer.summaries.first)
         XCTAssertEqual(summary.start.host, "both.test")
         XCTAssertEqual(summary.start.outbound, .direct)
-        XCTAssertEqual(summary.reached, .connected)
+        XCTAssertEqual(summary.reached, .responding, "the echo came back")
+        XCTAssertEqual(summary.bytesUp, 12)
+        XCTAssertEqual(summary.bytesDown, 12)
+        XCTAssertEqual(summary.applied, .passthrough(.splitNone))
+        XCTAssertNotNil(summary.payloadSentAt)
+        XCTAssertNotNil(summary.tFirstDown)
         XCTAssertEqual(summary.dohIPs, ["127.0.0.1", "::1"])
         XCTAssertEqual(summary.connectedAddress, "::1")
         XCTAssertEqual(summary.attempts.map(\.address), ["127.0.0.1", "::1"])
@@ -727,5 +732,44 @@ final class LoopbackHarnessTests: XCTestCase {
         try rejected.send("CONNECT localhost:\(origin.port) HTTP/1.1\r\nHost: localhost\r\n\r\n")
         let reply = try rejected.read(through: Data("\r\n\r\n".utf8))
         XCTAssertTrue(String(decoding: reply, as: UTF8.self).hasPrefix("HTTP/1.1 502"))
+    }
+
+    // MARK: - Payload and end reasons (network-scanner step 5e)
+
+    func testObserverSeesTheHelloAndTheServersFinish() throws {
+        let origin = try startOrigin(.replyAndFinish(Data([0x16, 0x03, 0x03, 0x00, 0x01, 0x02])))
+        let observer = RecordingObserver()
+        let port = try startProxy(splitMode: .firstByte, observer: observer)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: "127.0.0.1")
+        let hello = ClientHelloBuilder.make(sni: "www.example.com")
+        try client.send(hello)
+        XCTAssertEqual(try client.read(count: 6).count, 6)
+        XCTAssertTrue(client.waitForClose(timeout: 2), "the server's FIN is forwarded")
+        client.close()
+
+        XCTAssertTrue(eventually { observer.summaries.count == 1 })
+        let summary = try XCTUnwrap(observer.summaries.first)
+        if case .tls(let info) = summary.kind { XCTAssertEqual(info.sni, "www.example.com") } else {
+            XCTFail("kind \(summary.kind)")
+        }
+        if case .desync = summary.applied {} else { XCTFail("applied \(String(describing: summary.applied))") }
+        XCTAssertEqual(summary.reached, .responding)
+        XCTAssertEqual(summary.bytesDown, 6)
+        XCTAssertEqual(summary.endReason, .serverFin)
+        XCTAssertNotNil(summary.establishment.tcpRTT, "the establishment report is read on loopback too")
+    }
+
+    func testObserverSeesTheServersReset() throws {
+        let origin = try startOrigin(.resetOnData)
+        let observer = RecordingObserver()
+        let port = try startProxy(splitMode: .none, observer: observer)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: "127.0.0.1")
+        try client.send("hello origin")
+        XCTAssertTrue(client.waitForClose(timeout: 2))
+
+        XCTAssertTrue(eventually { observer.summaries.count == 1 })
+        let summary = try XCTUnwrap(observer.summaries.first)
+        XCTAssertEqual(summary.reached, .payloadSent)
+        XCTAssertEqual(summary.endReason, .serverReset)
     }
 }

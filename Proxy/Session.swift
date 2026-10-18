@@ -62,6 +62,8 @@ final class Session {
 
     private static let logger = Logger(subsystem: "com.rnglol.Spoofy", category: "Session")
     private static let readSize = 65_536
+    /// Relay tick while traced, for the stall check (network-scanner plan §3).
+    private static let traceTick: DispatchTimeInterval = .seconds(2)
 
     let scope: SessionScope
     var id: UInt64 { scope.id }
@@ -256,13 +258,27 @@ final class Session {
         switch request.kind {
         case .http(let head):
             // No reply: the origin's response is the reply.
-            write([head + request.leftover], to: upstream) { [self] in relay(upstream) }
+            scope.trace?.setApplied(.passthrough(.plainHTTP))
+            write([head + request.leftover], to: upstream) { [self] in
+                scope.trace?.payloadSent(kind: PayloadSniffer.sniff(client: head))
+                relay(upstream)
+            }
         case .tunnel:
             sendToClient(successReply()) { [self] in
                 if case .desync(let parameters) = outbound {
                     readFirstFlight(upstream, initial: request.leftover, desync: parameters)
+                    return
+                }
+                if case .shadowsocks = outbound {
+                    scope.trace?.setApplied(.shadowsocks)
                 } else {
-                    write([request.leftover], to: upstream) { [self] in relay(upstream) }
+                    scope.trace?.setApplied(.passthrough(.splitNone))
+                }
+                let leftover = request.leftover
+                write([leftover], to: upstream) { [self] in
+                    // Without pipelined bytes the relay reports the first payload.
+                    if !leftover.isEmpty { scope.trace?.payloadSent(kind: PayloadSniffer.sniff(client: leftover)) }
+                    relay(upstream)
                 }
             }
         }
@@ -281,16 +297,35 @@ final class Session {
                 guard phase == .writingFirstFlight else { return }
                 // N7: never relay after a failed segment write.
                 if let error { return close(.firstFlightWriteFailed(error)) }
+                traceFirstFlight(flight, desync: desync)
                 relay(upstream, firstClientReceive: reader.inFlightRead)
             }
+        }
+    }
+
+    /// §2.2: the first flight is on the wire. An empty one leaves the kind to the relay.
+    private func traceFirstFlight(_ flight: FirstFlight, desync: DesyncParameters) {
+        guard let trace = scope.trace else { return }
+        switch flight {
+        case .clientHello(let record, _, _):
+            trace.setApplied(.desync(desync))
+            trace.payloadSent(kind: ClientHelloInfo.parse(record: record).map { .tls($0) } ?? .tlsOther)
+        case .raw(let bytes):
+            trace.setApplied(.passthrough(.notTLS))
+            trace.payloadSent(kind: PayloadSniffer.sniff(client: bytes))
+        case .empty:
+            trace.setApplied(.passthrough(.clientSilent))
         }
     }
 
     private func relay(_ upstream: any ConnectionProtocol, firstClientReceive: ((@escaping ReceiveHandler) -> Void)? = nil) {
         guard phase != .closed else { return }
         phase = .relaying
+        let trace = scope.trace
         ConnectionRelay.relay(left: client, right: upstream, label: label, queue: queue,
-                              idleTimeout: deps.limits.idleTimeout, firstLeftReceive: firstClientReceive) { [self] stats in
+                              idleTimeout: deps.limits.idleTimeout,
+                              idleCheckInterval: trace == nil ? ConnectionRelay.defaultIdleCheckInterval : Self.traceTick,
+                              firstLeftReceive: firstClientReceive, observer: trace) { [self] stats in
             relayStats = stats
             close(stats.idleTimedOut ? .idleTimeout : .relayFinished)
         }

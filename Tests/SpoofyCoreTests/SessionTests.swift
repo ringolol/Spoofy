@@ -421,4 +421,92 @@ final class SessionTests: XCTestCase {
         scope.queue.sync { session.close(.proxyStopped) }
         XCTAssertEqual(observer.summaries.map(\.endReason), [.proxyStopped])
     }
+
+    // MARK: - First payload and relay events (network-scanner plan §2.2, §3)
+
+    private func summary(file: StaticString = #filePath, line: UInt = #line) -> TraceSummary? {
+        waitFor({ self.observer.summaries.count == 1 }, file: file, line: line)
+        return observer.summaries.first
+    }
+
+    func testDesyncedHelloIsTLSWithTheDesyncApplied() throws {
+        start([.data(Self.connectHead + Self.hello)], observe: true)
+        waitFor { self.upstream.sent.count == 2 }
+        client.push(.eof)
+        let summary = try XCTUnwrap(summary())
+        XCTAssertEqual(summary.kind, .tls(try XCTUnwrap(ClientHelloInfo.parse(record: Self.hello))))
+        if case .tls(let info) = summary.kind { XCTAssertEqual(info.sni, "www.example.com") }
+        XCTAssertEqual(summary.applied, .desync(DesyncParameters(mode: .firstByte, chunkSize: SpoofProfile.makeDefault().chunkSize,
+                                                                recordFragmentation: false)))
+        XCTAssertNotNil(summary.payloadSentAt)
+        XCTAssertEqual(summary.bytesUp, 0, "the first flight isn't relayed")
+    }
+
+    func testNonTLSFirstFlightOnADesyncRouteIsNotApplied() throws {
+        start([.data(Self.connectHead), .data(Data("SSH-2.0-client\r\n".utf8))], observe: true)
+        waitFor { self.upstream.sent.count == 1 }
+        client.push(.eof)
+        let summary = try XCTUnwrap(summary())
+        XCTAssertEqual(summary.kind, .ssh)
+        XCTAssertEqual(summary.applied, .passthrough(.notTLS))
+    }
+
+    func testPlainHTTPIsHTTPPassthrough() throws {
+        let request = "GET http://example.com/a HTTP/1.1\r\nHost: example.com\r\n\r\n"
+        start([.data(Data(request.utf8))], observe: true)
+        waitFor { self.upstream.sent.count == 1 }
+        upstream.push(.eof)
+        let summary = try XCTUnwrap(summary())
+        XCTAssertEqual(summary.kind, .http(method: "GET", host: "example.com"))
+        XCTAssertEqual(summary.applied, .passthrough(.plainHTTP))
+        XCTAssertEqual(summary.endReason, .serverFin)
+    }
+
+    func testSplitNoneTunnelSniffsTheFirstRelayedChunk() throws {
+        start([.data(Self.connectHead), .data(Self.hello)], split: .none, observe: true)
+        waitFor { self.upstream.sent.count == 1 }
+        upstream.push(.data(Data([0x16, 0x03, 0x03, 0x00, 0x02, 0x02, 0x00])))
+        waitFor { self.client.sent.count == 2 }
+        upstream.push(.error(.posix(.ECONNRESET)))
+        let summary = try XCTUnwrap(summary())
+        XCTAssertEqual(summary.applied, .passthrough(.splitNone))
+        if case .tls = summary.kind {} else { XCTFail("kind \(summary.kind)") }
+        XCTAssertEqual(summary.reached, .responding)
+        XCTAssertEqual(summary.bytesUp, Self.hello.count)
+        XCTAssertEqual(summary.bytesDown, 7)
+        XCTAssertEqual(summary.endReason, .serverReset)
+    }
+
+    func testPipelinedBytesOnADirectTunnelAreThePayload() throws {
+        start([.data(Self.connectHead + Data("SSH-2.0-x\r\n".utf8))], split: .none, observe: true)
+        waitFor { self.upstream.sent.count == 1 }
+        client.push(.eof)
+        let summary = try XCTUnwrap(summary())
+        XCTAssertEqual(summary.kind, .ssh)
+        XCTAssertNotNil(summary.payloadSentAt)
+    }
+
+    func testVPNTunnelIsShadowsocksApplied() throws {
+        start([.data(Self.connectHead + Self.hello)], route: .vpn, outline: Self.outline, observe: true)
+        waitFor { self.upstream.sent.count == 1 }
+        client.push(.eof)
+        let summary = try XCTUnwrap(summary())
+        XCTAssertEqual(summary.applied, .shadowsocks)
+        if case .tls = summary.kind {} else { XCTFail("kind \(summary.kind)") }
+    }
+
+    /// U7: a silent client on a desync route; the server's banner names the protocol.
+    func testServerFirstOnADesyncRoute() throws {
+        start([.data(Self.connectHead)], limits: Session.Limits(handshakeTimeout: 5, firstByteTimeout: 0.05), observe: true)
+        waitFor { self.client.sent.count == 1 }
+        waitFor { self.phase() == .relaying }
+        upstream.push(.data(Data("220 smtp.example ESMTP\r\n".utf8)))
+        waitFor { self.client.sent.count == 2 }
+        upstream.push(.eof)
+        let summary = try XCTUnwrap(summary())
+        XCTAssertEqual(summary.applied, .passthrough(.clientSilent))
+        XCTAssertEqual(summary.kind, .serverFirst(.smtpOrFTP))
+        XCTAssertNil(summary.payloadSentAt)
+        XCTAssertEqual(summary.endReason, .serverFin)
+    }
 }

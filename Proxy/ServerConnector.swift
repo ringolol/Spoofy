@@ -154,7 +154,7 @@ private final class DialAttempt {
             case .ready:
                 guard live.removeValue(forKey: id) != nil else { return }
                 conn.stateUpdateHandler = nil
-                session.trace?.attemptReady(host)
+                session.trace?.attemptReady(host, reports: NWTransportReports(conn))
                 finish(.success(conn))
             case .failed(let error), .waiting(let error):
                 // N11: .waiting is a failure for this address, not something to sit out.

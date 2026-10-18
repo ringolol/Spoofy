@@ -15,7 +15,7 @@ final class RecordingObserver: ConnectionObserver {
 
     func begin(_ start: TraceStart, queue: DispatchQueue) -> ConnectionTrace? {
         lock.withLock { _starts.append(start) }
-        return ConnectionTrace(start) { [weak self] summary in
+        return ConnectionTrace(start, queue: queue) { [weak self] summary in
             guard let self else { return }
             self.lock.withLock { self._summaries.append(summary) }
         }
