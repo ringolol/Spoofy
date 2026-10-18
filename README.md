@@ -15,6 +15,7 @@ Spoofy is a local HTTP/SOCKS5 proxy that bypasses Deep Packet Inspection by frag
 - DNS-over-HTTPS to bypass DNS-based blocking
 - Outline (Shadowsocks) routing for selected domains
 - Per-domain profiles with independent bypass strategies
+- Network scanner — see which hosts your apps reach, which look blocked, and add them to a profile in two taps
 - LAN access — share the proxy with other devices on your network
 - Export settings
 
@@ -100,6 +101,23 @@ When enabled, DNS queries are sent over HTTPS instead of plain DNS, preventing y
 - **DoH Server URL** — the DoH endpoint to use (default: `https://1.1.1.1/dns-query`)
 
 **Recommendation:** Enable this if your ISP blocks domains at the DNS level.
+
+### Network Scanner
+
+Spoofy keeps a log of the connections it carries and judges each host from them. Nothing is sent anywhere and nothing is probed; the scanner only looks at traffic your apps already make.
+
+Open it from the list icon on the main screen, from the summary line under the proxy address (`42 hosts · 3 blocked ›`), or from **Settings → Find Hosts to Add**.
+
+- **Verdicts** — each host gets the block type its connections point to (cut after the TLS hello, address unreachable, DNS spoofed, fake response, HTTP block page, stalls after ~16 KB, network whitelist), in red when the evidence is strong and orange when it's thin. The detail screen explains what it means and what to try. A verdict only counts connections made with the host's current rule, so after you change a profile the host shows *Rule changed* until it is used again.
+- **Network banner** — when nothing works (offline), when almost everything except a few sites fails (whitelist mode), or when the Outline server is unreachable, a banner says so and per-host verdicts are held back.
+- **Adding hosts** — tap **Edit**, select hosts, then **Add to Profile…** or **New Profile…** (or long-press a single host). Each host can be added as an exact name or as a `*.example.com` wildcard. A new profile starts with a strategy suggested from the block type. The sheet warns when a pattern is already there, when an earlier profile would still catch the host, or when the target profile is off.
+- **Details** — tap a host for its addresses, ports, protocol, and a timeline of recent connections.
+- **Hide** — long-press to hide noisy hosts (or a whole `*.example.com`). Hidden hosts are still carried, just not listed.
+- **Couldn't carry** — requests Spoofy refused (unsupported protocol, malformed request, too many connections) are grouped at the bottom.
+
+If an app connects to an IP address instead of a name, domain rules can't match it. Set the app to resolve names through the proxy (SOCKS5h / remote DNS) to get domain names in the scanner.
+
+The log lives in memory and survives stopping and starting the proxy; **Clear Log** in the scanner menu empties it.
 
 ### Advanced Options
 
