@@ -15,9 +15,9 @@ Spoofy is a local HTTP/SOCKS5 proxy that bypasses Deep Packet Inspection by frag
 - DNS-over-HTTPS to bypass DNS-based blocking
 - Outline (Shadowsocks) routing for selected domains
 - Per-domain profiles with independent bypass strategies
-- Network scanner — see which hosts your apps reach, which look blocked, and add them to a profile in two taps
+- Network scanner — see which hosts your apps reach, which look blocked, and add them to a new or existing profile in a few taps
 - LAN access — share the proxy with other devices on your network
-- Export settings
+- Export and import settings through the clipboard
 
 ## Limitations
 
@@ -44,7 +44,7 @@ The **Master** (default) profile applies to all traffic that doesn't match any o
 
 #### Custom Profiles
 
-You can create additional profiles for specific domains that need different settings.
+You can create additional profiles for specific domains that need different settings. A host uses the first enabled profile in the list whose patterns match it; tap **Edit** in Settings to reorder profiles. Hosts that match none use Master.
 
 ### Domain patterns
 
@@ -86,11 +86,11 @@ An additional layer of obfuscation. When enabled, the TLS handshake message is w
 
 ### Outline Server
 
-When VPN type is set to **Outline**, traffic matching that profile's domains is routed through an [Outline](https://getoutline.org/)-compatible Shadowsocks server.
+When the Route Mode is **VPN**, traffic matching that profile's domains is routed through an [Outline](https://getoutline.org/)-compatible Shadowsocks server.
 
 <img src="Docs/profile_vpn_screen.jpg" width="250" />
 
-To configure Outline routing paste your Outline server's `ss://` access key into the **Server Configuration** field
+To configure Outline routing paste your Outline server's `ss://` access key into the **Server Configuration** field. Custom profiles can turn on **Use Master Server** to share the Master profile's server instead of keeping their own key.
 
 **Recommendation:** Use Outline mode when you have access to an Outline server for domains where DPI bypass is not enough.
 
@@ -99,14 +99,19 @@ To configure Outline routing paste your Outline server's `ss://` access key into
 When enabled, DNS queries are sent over HTTPS instead of plain DNS, preventing your ISP or network from seeing which domains you're resolving.
 
 - **DoH Server URL** — the DoH endpoint to use (default: `https://1.1.1.1/dns-query`)
+- **Use Master DoH URL** — custom profiles can reuse the Master profile's endpoint
+
+DoH works with both route modes. With **Split**, Spoofy resolves the name over DoH and connects to the result. With **VPN**, it resolves the name over DoH on your device and sends the Outline server the address; with DoH off, the Outline server resolves the name itself, which is usually what you want.
 
 **Recommendation:** Enable this if your ISP blocks domains at the DNS level.
 
 ### Network Scanner
 
+<img src="Docs/scanner.gif" height="550">
+
 Spoofy keeps a log of the connections it carries and judges each host from them. Nothing is sent anywhere and nothing is probed; the scanner only looks at traffic your apps already make.
 
-Open it from the list icon on the main screen, from the summary line under the proxy address (`42 hosts · 3 blocked ›`), or from **Settings → Find Hosts to Add**.
+Open it from the magnifying-glass icon on the main screen, from the summary line under the proxy address (`42 hosts · 3 blocked ›`), or from **Settings → Find Hosts to Add**.
 
 - **Verdicts** — each host gets the block type its connections point to (cut after the TLS hello, address unreachable, DNS spoofed, fake response, HTTP block page, stalls after ~16 KB, network whitelist), in red when the evidence is strong and orange when it's thin. The detail screen explains what it means and what to try. A verdict only counts connections made with the host's current rule, so after you change a profile the host shows *Rule changed* until it is used again.
 - **Network banner** — when nothing works (offline), when almost everything except a few sites fails (whitelist mode), or when the Outline server is unreachable, a banner says so and per-host verdicts are held back.
@@ -180,7 +185,7 @@ Spoofy is **not available on the App Store** and does not support VPN mode. Both
 1. Go to the [Releases](https://github.com/ringolol/Spoofy/releases) page
 2. Download `Spoofy-macOS.zip` from the latest release
 3. Extract the zip and move `Spoofy.app` to your Applications folder
-4. On first launch, macOS will block the app because it is not signed. Try openning the app and then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
+4. On first launch, macOS will block the app because it is not signed. Try opening the app and then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
 
 ### Option 2: Build and install with Make
 
