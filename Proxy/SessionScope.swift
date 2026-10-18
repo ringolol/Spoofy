@@ -6,6 +6,9 @@ final class SessionScope {
     let id: UInt64
     let queue: DispatchQueue
     private(set) var isClosed = false
+    /// The scanner's record of this session (network-scanner plan §1). Set once in `Session.begin`;
+    /// whatever opens a connection for the session reports to it.
+    var trace: ConnectionTrace?
     private var connections: [any ConnectionProtocol] = []
 
     init(id: UInt64, target: DispatchQueue) {

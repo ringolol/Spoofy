@@ -11,6 +11,7 @@ final class SessionTests: XCTestCase {
     private var upstream: FakeConnection!
     private var outbound: FakeOutbound!
     private var session: Session!
+    private var observer: RecordingObserver!
     /// Set on the session queue by `onClose`.
     private var didClose = false
 
@@ -47,14 +48,16 @@ final class SessionTests: XCTestCase {
     /// Builds and starts a session. `script` is the client's input; more can be pushed later.
     private func start(_ script: [FakeConnection.Event], route: RouteMode = .split, split: SplitMode = .firstByte,
                        outline: OutlineServerConfig? = nil, connect: Result<Void, OutboundError> = .success(()),
-                       limits: Session.Limits = Session.Limits(handshakeTimeout: 5, firstByteTimeout: 5)) {
+                       limits: Session.Limits = Session.Limits(handshakeTimeout: 5, firstByteTimeout: 5),
+                       observe: Bool = false) {
         scope = SessionScope(id: 1, target: root)
         client = FakeConnection(queue: scope.queue, script: script)
         upstream = FakeConnection(queue: scope.queue)
         outbound = FakeOutbound(connect.map { upstream! })
         let outbound = self.outbound!
+        observer = observe ? RecordingObserver() : nil
         let deps = Session.Dependencies(router: Self.router(route: route, split: split, outline: outline),
-                                        limits: limits) { _ in outbound }
+                                        limits: limits, observer: observer) { _ in outbound }
         session = Session(scope: scope, client: client, deps: deps)
         didClose = false
         session.onClose = { [unowned self] in didClose = true }
@@ -321,5 +324,101 @@ final class SessionTests: XCTestCase {
         waitForClose()
         XCTAssertEqual(client.sent, [HTTPHeadParser.response(502, "Bad Gateway")])
         XCTAssertEqual(outbound.targets, [], "the new VPN route has no server, so nothing is dialed")
+    }
+
+    // MARK: - Observer (network-scanner plan §1, §2.1)
+
+    func testRoutedSessionIsTracedFromBeginToClose() throws {
+        start([.data(Self.connectHead + Self.hello)], observe: true)
+        waitFor { self.upstream.sent.count == 2 }
+        let started = try XCTUnwrap(observer.starts.first)
+        XCTAssertEqual(observer.starts.count, 1)
+        XCTAssertEqual(started.id, 1)
+        XCTAssertEqual(started.inbound, .http)
+        XCTAssertEqual(started.host, "example.com")
+        XCTAssertEqual(started.port, 443)
+        XCTAssertFalse(started.isIPLiteral)
+        XCTAssertEqual(started.profileName, "Master")
+        XCTAssertTrue(started.isDefaultProfile)
+        XCTAssertEqual(started.outbound, .desync(DesyncParameters(mode: .firstByte, chunkSize: SpoofProfile.makeDefault().chunkSize,
+                                                                  recordFragmentation: false)))
+        XCTAssertNotNil(scope.queue.sync { scope.trace })
+        XCTAssertEqual(observer.summaries.count, 0, "still open")
+
+        client.push(.eof)
+        waitForClose()
+        XCTAssertEqual(observer.summaries.map(\.endReason), [.clientClosed])
+        XCTAssertEqual(observer.refusals.count, 0)
+    }
+
+    func testTheTraceNamesTheOutlineServerWithoutItsPassword() {
+        start([.data(Self.connectHead)], route: .vpn, outline: Self.outline, observe: true)
+        waitFor { self.client.sent.count == 1 }
+        XCTAssertEqual(observer.starts.map(\.outbound), [.shadowsocks(host: "h", port: 1)])
+    }
+
+    func testIPLiteralTargetIsMarked() {
+        start([.data(Self.greeting + Self.socksIPv4Request)], observe: true)
+        waitFor { self.client.sent.count == 2 }
+        XCTAssertEqual(observer.starts.map(\.isIPLiteral), [true])
+        XCTAssertEqual(observer.starts.map(\.inbound), [.socks5])
+    }
+
+    func testConnectFailureEndsWithTheMappedReason() {
+        start([.data(Self.connectHead)], connect: .failure(.dial(.allFailed([.posix(.ECONNREFUSED)]))), observe: true)
+        waitForClose()
+        XCTAssertEqual(observer.summaries.map(\.endReason), [.connectFailed(.refused)])
+    }
+
+    func testOutlineFailureEndsAsOutlineConnectFailed() {
+        start([.data(Self.connectHead)], route: .vpn, outline: Self.outline, connect: .failure(.shadowsocks), observe: true)
+        waitForClose()
+        XCTAssertEqual(observer.summaries.map(\.endReason), [.outlineConnectFailed])
+    }
+
+    func testHandshakeFailureIsARefusalWithoutATrace() throws {
+        start([.data(Self.greeting + Data([0x05, 0x03, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))], observe: true)
+        waitForClose()
+        XCTAssertEqual(observer.starts.count, 0)
+        XCTAssertEqual(observer.summaries.count, 0)
+        let refusal = try XCTUnwrap(observer.refusals.first)
+        XCTAssertEqual(observer.refusals.count, 1)
+        XCTAssertEqual(refusal.inbound, .socks5)
+        XCTAssertEqual(refusal.reason, .handshake(.socks5Command(0x03)))
+        XCTAssertNil(refusal.target)
+    }
+
+    func testRouteRejectIsARefusalWithTheTarget() throws {
+        start([.data(Self.connectHead)], route: .vpn, observe: true)
+        waitForClose()
+        XCTAssertEqual(observer.starts.count, 0)
+        let refusal = try XCTUnwrap(observer.refusals.first)
+        XCTAssertEqual(observer.refusals.count, 1)
+        XCTAssertEqual(refusal.inbound, .http)
+        XCTAssertEqual(refusal.reason, .routeRejected(profileName: "Master"))
+        XCTAssertEqual(refusal.target, DialTarget(host: "example.com", port: 443))
+    }
+
+    /// A client that just goes away mid-handshake isn't refused.
+    func testClientClosingInTheHandshakeIsNotReported() {
+        start([.data(Self.greeting.prefix(1)), .eof], observe: true)
+        waitForClose()
+        XCTAssertEqual(observer.refusals.count, 0)
+        XCTAssertEqual(observer.starts.count, 0)
+    }
+
+    func testRerouteEndsAsRerouted() {
+        start([.data(Self.connectHead + Self.hello)], route: .vpn, outline: Self.outline, observe: true)
+        waitFor { self.upstream.sent.count == 1 }
+        reroute(route: .split, split: .none)
+        waitForClose()
+        XCTAssertEqual(observer.summaries.map(\.endReason), [.rerouted])
+    }
+
+    func testStopEndsAsProxyStopped() {
+        start([.data(Self.connectHead)], observe: true)
+        waitFor { self.client.sent.count == 1 }
+        scope.queue.sync { session.close(.proxyStopped) }
+        XCTAssertEqual(observer.summaries.map(\.endReason), [.proxyStopped])
     }
 }

@@ -60,7 +60,9 @@ final class ServerConnector: Dialing {
             attempt.start(hosts: [target.host])
             return
         }
+        session.trace?.dnsStarted()
         resolver?.resolve(domain: target.host, on: session.queue) { ips in
+            session.trace?.dnsFinished(ips: ips)
             guard let ips, !ips.isEmpty else {
                 Self.logger.debug("[\(target.host)] DoH gave no addresses, using the system resolver")
                 attempt.start(hosts: [target.host])
@@ -146,23 +148,27 @@ private final class DialAttempt {
         let id = ObjectIdentifier(conn)
         live[id] = conn
         session.adopt(conn)
+        session.trace?.attemptStarted(host)
         conn.stateUpdateHandler = { [self] state in
             switch state {
             case .ready:
                 guard live.removeValue(forKey: id) != nil else { return }
                 conn.stateUpdateHandler = nil
+                session.trace?.attemptReady(host)
                 finish(.success(conn))
             case .failed(let error), .waiting(let error):
                 // N11: .waiting is a failure for this address, not something to sit out.
                 guard live.removeValue(forKey: id) != nil else { return }
                 Self.logger.debug("[\(self.target.host)] \(host) failed: \(error.localizedDescription)")
                 errors.append(error)
+                session.trace?.attemptFailed(host, error)
                 conn.stateUpdateHandler = nil
                 conn.cancel()
                 startNext()
             case .cancelled:
                 // Cancelled from outside (the session closed): this attempt is over.
                 guard live.removeValue(forKey: id) != nil else { return }
+                session.trace?.attemptCancelled(host)
                 startNext()
             default:
                 break

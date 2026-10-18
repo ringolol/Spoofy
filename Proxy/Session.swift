@@ -28,17 +28,22 @@ final class Session {
     struct Dependencies {
         let router: Router
         let limits: Limits
+        /// The scanner (network-scanner plan §1); nil = no tracing.
+        let observer: ConnectionObserver?
         /// The outbound for a routing decision; never called for `.reject`.
         let makeOutbound: (RouteDecision) -> Outbound
 
-        init(router: Router, limits: Limits, makeOutbound: @escaping (RouteDecision) -> Outbound) {
+        init(router: Router, limits: Limits, observer: ConnectionObserver? = nil,
+             makeOutbound: @escaping (RouteDecision) -> Outbound) {
             self.router = router
             self.limits = limits
+            self.observer = observer
             self.makeOutbound = makeOutbound
         }
 
-        init(router: Router, limits: Limits, dialer: Dialing, resolverCache: DoHResolverCache) {
-            self.init(router: router, limits: limits) { decision in
+        init(router: Router, limits: Limits, dialer: Dialing, resolverCache: DoHResolverCache,
+             observer: ConnectionObserver? = nil) {
+            self.init(router: router, limits: limits, observer: observer) { decision in
                 let resolver = resolverCache.resolver(for: decision.profile)
                 if case .shadowsocks(let config) = decision.outbound {
                     return ShadowsocksOutbound(dialer: dialer, config: config, resolver: resolver)
@@ -125,6 +130,7 @@ final class Session {
         let reached = phase
         phase = .closed
         deadlineGeneration += 1
+        scope.trace?.finish(fallback: reason.endReason)
         client.cancel()
         scope.close()
         let seconds = Double(DispatchTime.now().uptimeNanoseconds - startedAt.uptimeNanoseconds) / 1e9
@@ -199,6 +205,8 @@ final class Session {
         case .reply(let bytes, let then):
             sendToClient(bytes) { [self] in handle(then) }
         case .fail(let reply, let reason):
+            let refusal = RefusalReason.handshake(reason)
+            deps.observer?.refused(RefusalRecord(at: Date(), inbound: inbound, reason: refusal, target: refusal.target))
             fail(reply: reply, reason: .handshakeFailed(reason))
         case .request(let request):
             begin(request)
@@ -215,7 +223,13 @@ final class Session {
         Self.logger.info("[\(self.label, privacy: .public)] \(self.inbound?.rawValue ?? "?", privacy: .public) \(request.kind == .tunnel ? "tunnel" : "http", privacy: .public) → \(String(describing: decision.outbound), privacy: .public)")
 
         if case .reject(let reason) = decision.outbound {
+            deps.observer?.refused(RefusalRecord(at: Date(), inbound: inbound,
+                                                 reason: .routeRejected(profileName: decision.profile.name),
+                                                 target: request.target))
             return fail(reply: rejectReply(), reason: .rejected(reason))
+        }
+        if let observer = deps.observer, let traced = TraceOutbound(decision.outbound) {
+            scope.trace = observer.begin(traceStart(request.target, decision: decision, outbound: traced), queue: queue)
         }
 
         phase = .connecting
@@ -228,6 +242,14 @@ final class Session {
                 connected(upstream, request: request, outbound: decision.outbound)
             }
         }
+    }
+
+    private func traceStart(_ target: DialTarget, decision: RouteDecision, outbound: TraceOutbound) -> TraceStart {
+        TraceStart(id: id, startedAt: Date(), startedAtNanos: DispatchTime.now().uptimeNanoseconds,
+                   inbound: inbound ?? .http, host: target.host.lowercased(), port: target.port,
+                   isIPLiteral: ServerConnector.isIPLiteral(target.host), profileID: decision.profile.id,
+                   profileName: decision.profile.name, isDefaultProfile: decision.profile.isDefault,
+                   outbound: outbound)
     }
 
     private func connected(_ upstream: any ConnectionProtocol, request: InboundRequest, outbound: OutboundKind) {

@@ -31,14 +31,15 @@ final class LoopbackHarnessTests: XCTestCase {
     }
 
     private func startProxy(splitMode: SplitMode, chunkSize: Int = 5, recordFragmentation: Bool = false,
-                            resolver: FakeResolver? = nil, handshakeTimeout: TimeInterval = 10) throws -> UInt16 {
+                            resolver: FakeResolver? = nil, handshakeTimeout: TimeInterval = 10,
+                            observer: ConnectionObserver? = nil) throws -> UInt16 {
         try startProxy(Self.config(splitMode: splitMode, chunkSize: chunkSize, recordFragmentation: recordFragmentation,
                                    dohEnabled: resolver != nil),
-                       resolver: resolver, handshakeTimeout: handshakeTimeout)
+                       resolver: resolver, handshakeTimeout: handshakeTimeout, observer: observer)
     }
 
     private func startProxy(_ config: ProxyConfig, resolver: FakeResolver? = nil,
-                            handshakeTimeout: TimeInterval = 10) throws -> UInt16 {
+                            handshakeTimeout: TimeInterval = 10, observer: ConnectionObserver? = nil) throws -> UInt16 {
 
         let resolverCache = DoHResolverCache { url in
             guard let resolver else { preconditionFailure("DoH is off, but a resolver was requested for \(url)") }
@@ -46,7 +47,8 @@ final class LoopbackHarnessTests: XCTestCase {
         }
         // Short first-byte timer so the server-first tests (U7) don't wait the production 2 s.
         let server = ProxyServer(config: config, resolverCache: resolverCache,
-                                 limits: Session.Limits(handshakeTimeout: handshakeTimeout, firstByteTimeout: 0.3))
+                                 limits: Session.Limits(handshakeTimeout: handshakeTimeout, firstByteTimeout: 0.3),
+                                 observer: observer)
         let started = expectation(description: "proxy ready")
         let failure = LockedBox<Error?>(nil)
         server.start { error in
@@ -253,6 +255,52 @@ final class LoopbackHarnessTests: XCTestCase {
         try client.send("hello origin")
         XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8))
         XCTAssertLessThan(Date().timeIntervalSince(started), 2, "fallback must not wait for a timeout")
+    }
+
+    // MARK: - Observer (network-scanner step 5d)
+
+    func testObserverSeesTheDialRace() throws {
+        let origin = try startOrigin(.echo, host: "::1")
+        let resolver = FakeResolver(["both.test": ["127.0.0.1", "::1"]])
+        let observer = RecordingObserver()
+        let port = try startProxy(splitMode: .none, resolver: resolver, observer: observer)
+        let client = try connectTunnel(proxyPort: port, originPort: origin.port, host: "both.test")
+        try client.send("hello origin")
+        XCTAssertEqual(try client.read(count: 12), Data("hello origin".utf8))
+        client.close()
+
+        XCTAssertTrue(eventually { observer.summaries.count == 1 })
+        let summary = try XCTUnwrap(observer.summaries.first)
+        XCTAssertEqual(summary.start.host, "both.test")
+        XCTAssertEqual(summary.start.outbound, .direct)
+        XCTAssertEqual(summary.reached, .connected)
+        XCTAssertEqual(summary.dohIPs, ["127.0.0.1", "::1"])
+        XCTAssertEqual(summary.connectedAddress, "::1")
+        XCTAssertEqual(summary.attempts.map(\.address), ["127.0.0.1", "::1"])
+        XCTAssertEqual(summary.attempts.last?.outcome, .ready)
+        if case .failed = summary.attempts.first?.outcome {} else {
+            XCTFail("the IPv4 attempt should have failed: \(String(describing: summary.attempts.first))")
+        }
+        XCTAssertEqual(summary.endReason, .clientClosed)
+        XCTAssertEqual(observer.refusals.count, 0)
+    }
+
+    func testObserverSeesARefusedDial() throws {
+        let probe = try LoopbackOrigin(.recordAll)
+        let deadPort = probe.port
+        probe.stop()
+
+        let observer = RecordingObserver()
+        let port = try startProxy(splitMode: .none, observer: observer)
+        let client = try TestClient(port: port)
+        try client.send("CONNECT 127.0.0.1:\(deadPort) HTTP/1.1\r\n\r\n")
+        XCTAssertTrue(client.waitForClose(timeout: 2))
+        XCTAssertTrue(eventually { observer.summaries.count == 1 })
+        let summary = try XCTUnwrap(observer.summaries.first)
+        XCTAssertTrue(summary.start.isIPLiteral)
+        XCTAssertNil(summary.dnsStart, "an IP literal skips DNS")
+        XCTAssertEqual(summary.reached, .connecting)
+        XCTAssertEqual(summary.endReason, .connectFailed(.refused))
     }
 
     func testIPLiteralSkipsDoH() throws {
@@ -486,12 +534,15 @@ final class LoopbackHarnessTests: XCTestCase {
 
     func testConnectionCapAdmitsExactly200() throws {
         raiseFileDescriptorLimit(to: 4096)
-        let port = try startProxy(splitMode: .sni)
+        let observer = RecordingObserver()
+        let port = try startProxy(splitMode: .sni, observer: observer)
         let cap = ProxyServer.maxConcurrentConnections
         let clients = try (0..<(cap + 50)).map { _ in try TestClient(port: port) }
 
         XCTAssertTrue(eventually { clients.filter(\.isClosedByPeer).count == 50 },
                       "closed: \(clients.filter(\.isClosedByPeer).count)")
+        XCTAssertEqual(observer.refusals.map(\.reason), Array(repeating: .overCapacity, count: 50))
+        XCTAssertTrue(observer.refusals.allSatisfy { $0.inbound == nil && $0.target == nil })
         XCTAssertEqual(proxy?.activeSessionCount, cap)
         // No late admissions or extra rejections after things settle.
         usleep(200_000)

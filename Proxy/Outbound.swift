@@ -57,7 +57,9 @@ struct ShadowsocksOutbound: Outbound {
             }
         }
         guard let resolver, !ServerConnector.isIPLiteral(target.host) else { return open(target.host) }
+        session.trace?.dnsStarted()
         resolver.resolve(domain: target.host, on: session.queue) { ips in
+            session.trace?.dnsFinished(ips: ips)
             let resolved = ips.flatMap { ServerConnector.interleave($0).first } ?? target.host
             if resolved != target.host { Self.logger.debug("[\(target.host)] DoH resolved to \(resolved)") }
             open(resolved)

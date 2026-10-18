@@ -19,6 +19,7 @@ final class ProxyServer {
     private let resolverCache: DoHResolverCache
     private let dialer: Dialing
     private let limits: Session.Limits
+    private let observer: ConnectionObserver?
 
     // serverQueue only
     private var config: ProxyConfig
@@ -39,11 +40,12 @@ final class ProxyServer {
     /// `update` changes routing only.
     init(config: ProxyConfig,
          resolverCache: DoHResolverCache = DoHResolverCache(), dialer: Dialing = ServerConnector(),
-         limits: Session.Limits = Session.Limits()) {
+         limits: Session.Limits = Session.Limits(), observer: ConnectionObserver? = nil) {
         self.requestedPort = config.port
         self.allowLANAccess = config.allowLANAccess
         self.config = config
         self.limits = limits
+        self.observer = observer
         self.resolverCache = resolverCache
         self.dialer = dialer
         self.serverQueue = DispatchQueue(label: "com.rnglol.Spoofy.server", target: ioRoot)
@@ -137,13 +139,14 @@ final class ProxyServer {
     private func admit(_ clientConn: NWConnection) {
         guard sessions.count < Self.maxConcurrentConnections else {
             Self.logger.warning("Max connections reached (\(self.sessions.count, privacy: .public)), rejecting")
+            observer?.refused(RefusalRecord(at: Date(), inbound: nil, reason: .overCapacity, target: nil))
             clientConn.cancel()
             return
         }
 
         nextSessionID += 1
         let deps = Session.Dependencies(router: Router(config: config), limits: limits,
-                                        dialer: dialer, resolverCache: resolverCache)
+                                        dialer: dialer, resolverCache: resolverCache, observer: observer)
         let session = Session(id: nextSessionID, client: clientConn, target: ioRoot, deps: deps)
         sessions[session.id] = session
         Self.logger.info("Connection opened (active: \(self.sessions.count, privacy: .public))")
