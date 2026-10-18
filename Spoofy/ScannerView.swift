@@ -85,15 +85,20 @@ private struct ScannerScreen: View {
         .onAppear { model.start() }
         .onDisappear { model.stop() }
         // A list that reorders under the finger can't be selected from (§7.4).
+        // Paused while the sheet is open too, so the list doesn't rebuild behind it.
         .onChange(of: editMode.isEditing) { editing in
-            model.isPaused = editing
+            model.isPaused = editing || sheet != nil
             if !editing { selection = [] }
+        }
+        .onChange(of: sheet == nil) { closed in
+            model.isPaused = !closed || editMode.isEditing
         }
         .sheet(item: $sheet) { request in
             AddPatternsSheet(rows: request.rows, master: settings.master) { text in
                 confirmation = text
                 editMode = .inactive
-                model.refresh()
+            } onClose: {
+                sheet = nil
             }
         }
         .overlay(alignment: .bottom) {

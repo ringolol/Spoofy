@@ -5,9 +5,11 @@ struct AddPatternsSheet: View {
     let rows: [HostRow]
     /// Called after saving with the confirmation text.
     let onSave: (String) -> Void
+    /// Closes the sheet. The presenter clears its own state instead of relying on
+    /// `@Environment(\.dismiss)`, which didn't close it on the Mac while the list behind refreshed.
+    let onClose: () -> Void
 
     @EnvironmentObject private var settings: SettingsStore
-    @Environment(\.dismiss) private var dismiss
 
     private enum Target: Hashable {
         case existing(UUID)
@@ -20,9 +22,10 @@ struct AddPatternsSheet: View {
     @State private var draft: SpoofProfile
     private let note: AddPatternsPlan.Note?
 
-    init(rows: [HostRow], master: SpoofProfile, onSave: @escaping (String) -> Void) {
+    init(rows: [HostRow], master: SpoofProfile, onSave: @escaping (String) -> Void, onClose: @escaping () -> Void) {
         self.rows = rows
         self.onSave = onSave
+        self.onClose = onClose
 
         let kinds = rows.compactMap { row -> BlockKind? in
             switch row.verdict.status {
@@ -67,7 +70,7 @@ struct AddPatternsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel", action: onClose)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
@@ -104,6 +107,7 @@ struct AddPatternsSheet: View {
         }
     }
 
+    /// Default button style: a Form button takes clicks and highlights across its whole row.
     private func targetRow(_ value: Target, @ViewBuilder label: () -> some View) -> some View {
         Button {
             target = value
@@ -117,9 +121,7 @@ struct AddPatternsSheet: View {
                         .foregroundStyle(Color.accentColor)
                 }
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
     private var newProfileSection: some View {
@@ -199,7 +201,7 @@ struct AddPatternsSheet: View {
             let added = settings.addPatterns(patterns, to: id)
             onSave(added == 0 ? "\(name) already has these patterns" : "Added \(count(added)) to \(name)")
         }
-        dismiss()
+        onClose()
     }
 
     private func count(_ n: Int) -> String {
