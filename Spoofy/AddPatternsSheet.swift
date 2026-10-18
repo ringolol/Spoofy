@@ -20,7 +20,9 @@ struct AddPatternsSheet: View {
     @State private var patterns: [String: String]
     @State private var target: Target = .new
     @State private var draft: SpoofProfile
-    private let note: AddPatternsPlan.Note?
+    private let suggestion: AddPatternsPlan.Suggestion
+    /// The distinct problems among the selected hosts; more than one means the suggestion follows the most common.
+    private let kindCount: Int
 
     init(rows: [HostRow], master: SpoofProfile, onSave: @escaping (String) -> Void, onClose: @escaping () -> Void) {
         self.rows = rows
@@ -35,7 +37,8 @@ struct AddPatternsSheet: View {
         }
         let suggestion = AddPatternsPlan.suggestion(kinds: kinds, payloads: rows.reduce(into: []) { $0.formUnion($1.kinds) },
                                                     masterHasOutline: master.outlineConfig != nil)
-        note = suggestion.note
+        self.suggestion = suggestion
+        kindCount = Set(kinds).count
         _draft = State(initialValue: .makeCustom(name: AddPatternsPlan.defaultName(hosts: rows.map(\.host)), domainPatterns: [],
                                                  routeMode: suggestion.routeMode, splitMode: suggestion.splitMode,
                                                  dohEnabled: suggestion.dohEnabled))
@@ -52,6 +55,9 @@ struct AddPatternsSheet: View {
         case .existing(let id): return settings.customProfiles.first { $0.id == id }
         }
     }
+
+    /// Based on how the hosts were blocked, rather than the defaults.
+    private var isRecommended: Bool { suggestion.reason != .noEvidence }
 
     private var warnings: [AddPatternsPlan.Warning] {
         guard let targetProfile else { return [] }
@@ -92,7 +98,7 @@ struct AddPatternsSheet: View {
 
     /// New profile first and in the accent colour, then the existing ones (§7.4).
     private var targetSection: some View {
-        Section("Add to") {
+        Section {
             targetRow(.new) {
                 Label("New profile", systemImage: "plus.circle.fill")
                     .foregroundStyle(Color.accentColor)
@@ -102,6 +108,16 @@ struct AddPatternsSheet: View {
                 targetRow(.existing(profile.id)) {
                     Text(profile.name.isEmpty ? "Unnamed profile" : profile.name)
                         .foregroundStyle(profile.isEnabled ? Color.primary : Color.secondary)
+                }
+            }
+        } header: {
+            Text("Add to")
+        } footer: {
+            if isRecommended, case .existing = target, let profile = targetProfile {
+                if suggestion.matches(profile) {
+                    Text("This profile already has the recommended settings.")
+                } else {
+                    Text("This profile keeps its own settings. Recommended for these hosts: \(summary).")
                 }
             }
         }
@@ -126,21 +142,33 @@ struct AddPatternsSheet: View {
 
     private var newProfileSection: some View {
         Section {
+            reasonRow
             TextField("Profile Name", text: $draft.name)
             Picker("Route", selection: $draft.routeMode) {
-                ForEach(RouteMode.allCases) { Text($0.displayName).tag($0) }
+                ForEach(RouteMode.allCases) { Text(option($0.displayName, recommended: $0 == suggestion.routeMode)).tag($0) }
             }
             if draft.routeMode == .split {
                 Picker("Split Mode", selection: $draft.splitMode) {
-                    ForEach(SplitMode.allCases) { Text($0.displayName).tag($0) }
+                    ForEach(SplitMode.allCases) {
+                        Text(option($0.displayName, recommended: suggestion.routeMode == .split && $0 == suggestion.splitMode)).tag($0)
+                    }
                 }
             }
             // Both routes use it: VPN resolves locally and sends the address to the Outline server.
-            Toggle("DoH", isOn: $draft.dohEnabled)
+            Toggle(isOn: $draft.dohEnabled) {
+                Text("DoH")
+                if isRecommended {
+                    Text(suggestion.dohEnabled ? "Recommended: on" : "Recommended: off")
+                }
+            }
         } header: {
-            Text("New profile")
+            HStack {
+                Text("New profile")
+                Spacer()
+                recommendedBadge
+            }
         } footer: {
-            switch note {
+            switch suggestion.note {
             case .ipNeedsVPN:
                 Text("IP blocks usually need VPN. Add an Outline server to Master to use it here.")
             case .splitOnlyChangesTLS:
@@ -151,6 +179,102 @@ struct AddPatternsSheet: View {
                 }
             }
         }
+    }
+
+    /// Why these settings: the problem as the scanner shows it, then what the settings do about it.
+    @ViewBuilder
+    private var reasonRow: some View {
+        if let verdict = reasonVerdict {
+            VStack(alignment: .leading, spacing: 4) {
+                VerdictLabel(verdict: verdict)
+                Text(reasonText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Label {
+                Text(reasonText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// A selected host's verdict of the kind the suggestion answers; a blocked one over a suspicious one.
+    private var reasonVerdict: HostVerdict? {
+        guard case .blocked(let kind) = suggestion.reason else { return nil }
+        let verdicts = rows.map(\.verdict).filter {
+            switch $0.status {
+            case .blocked(let k), .suspicious(let k): return k == kind
+            default: return false
+            }
+        }
+        return verdicts.first { if case .blocked = $0.status { return true } else { return false } } ?? verdicts.first
+    }
+
+    /// "Recommended" while the draft has the suggested settings; a way back once it doesn't.
+    @ViewBuilder
+    private var recommendedBadge: some View {
+        if isRecommended {
+            if suggestion.matches(draft) {
+                Label("Recommended", systemImage: "checkmark.seal.fill")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(.green)
+                    .textCase(nil)
+            } else {
+                Button("Use Recommended") {
+                    draft.routeMode = suggestion.routeMode
+                    draft.splitMode = suggestion.splitMode
+                    draft.dohEnabled = suggestion.dohEnabled
+                }
+                .font(.footnote)
+                .textCase(nil)
+            }
+        }
+    }
+
+    private func option(_ name: String, recommended: Bool) -> String {
+        isRecommended && recommended ? "\(name) (recommended)" : name
+    }
+
+    /// "Split · SNI · DoH on".
+    private var summary: String {
+        var parts = [suggestion.routeMode.displayName]
+        if suggestion.routeMode == .split { parts.append(suggestion.splitMode.displayName) }
+        parts.append(suggestion.dohEnabled ? "DoH on" : "DoH off")
+        return parts.joined(separator: " · ")
+    }
+
+    private var reasonText: String {
+        let vpn = suggestion.routeMode == .vpn
+        let cause: String
+        switch suggestion.reason {
+        case .noEvidence:
+            return "No block seen for these hosts yet, so these are the default settings."
+        case .nonTLS:
+            return vpn ? "These hosts don't use TLS, so splitting can't help. VPN carries them through your Outline server."
+                       : "These hosts don't use TLS, so splitting can't help."
+        case .blocked(let kind):
+            // The verdict label above names the problem; this says what the settings do about it.
+            switch kind {
+            case .sni, .injected:
+                cause = "SNI split hides the site name from DPI."
+            case .dns:
+                cause = "DoH gets the real address."
+            case .ip, .freeze, .whitelist:
+                cause = vpn ? "Splitting can't help with this. VPN goes through your Outline server."
+                            : "Splitting rarely helps with this; it needs a VPN."
+            case .httpBlockPage:
+                cause = vpn ? "VPN carries the request past the filter."
+                            : "DoH avoids a spoofed address; use HTTPS where you can."
+            case .outline:
+                cause = "SNI split tries without the Outline server."
+            }
+        }
+        return kindCount > 1 ? cause + " The most common problem among the selected hosts." : cause
     }
 
     @ViewBuilder

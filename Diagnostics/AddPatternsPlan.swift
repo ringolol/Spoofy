@@ -14,6 +14,23 @@ enum AddPatternsPlan {
         let splitMode: SplitMode
         let dohEnabled: Bool
         let note: Note?
+        let reason: Reason
+
+        /// Whether `profile` has these route settings; split mode only counts on the split route.
+        func matches(_ profile: SpoofProfile) -> Bool {
+            profile.routeMode == routeMode && profile.dohEnabled == dohEnabled
+                && (routeMode != .split || profile.splitMode == splitMode)
+        }
+    }
+
+    /// What the suggestion is based on.
+    enum Reason: Equatable {
+        /// The selected hosts' most common problem.
+        case blocked(BlockKind)
+        /// The hosts carry protocols split modes don't change.
+        case nonTLS
+        /// Nothing pointed at a block: the defaults, not a recommendation.
+        case noEvidence
     }
 
     enum Note: Equatable {
@@ -90,18 +107,22 @@ enum AddPatternsPlan {
 
     /// `kinds`: the selected hosts' problem kinds, one per host. `payloads`: what they carried.
     static func suggestion(kinds: [BlockKind], payloads: Set<PayloadKindTag>, masterHasOutline: Bool) -> Suggestion {
-        let split = { (mode: SplitMode, doh: Bool, note: Note?) in
-            Suggestion(routeMode: .split, splitMode: mode, dohEnabled: doh, note: note)
-        }
-        let vpn = Suggestion(routeMode: .vpn, splitMode: .none, dohEnabled: false, note: nil)
-
         // §2.5.5: split modes only change TLS.
         let carriesWeb = payloads.contains(.tls) || payloads.contains(.http)
-        if !payloads.subtracting([.none]).isEmpty, !carriesWeb {
+        let nonTLS = !payloads.subtracting([.none]).isEmpty && !carriesWeb
+        let kind = dominant(kinds)
+        let reason: Reason = nonTLS ? .nonTLS : kind.map { .blocked($0) } ?? .noEvidence
+
+        let split = { (mode: SplitMode, doh: Bool, note: Note?) in
+            Suggestion(routeMode: .split, splitMode: mode, dohEnabled: doh, note: note, reason: reason)
+        }
+        let vpn = Suggestion(routeMode: .vpn, splitMode: .none, dohEnabled: false, note: nil, reason: reason)
+
+        if nonTLS {
             return masterHasOutline ? vpn : split(.none, false, .splitOnlyChangesTLS)
         }
 
-        switch dominant(kinds) {
+        switch kind {
         case .dns:
             return split(.none, true, nil)
         case .ip, .freeze, .whitelist:

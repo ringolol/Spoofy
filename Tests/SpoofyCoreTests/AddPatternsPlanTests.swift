@@ -48,31 +48,48 @@ final class AddPatternsPlanTests: XCTestCase {
 
     func testSuggestionFollowsTheDominantKind() {
         let sni = Plan.suggestion(kinds: [.sni, .sni, .dns], payloads: [.tls], masterHasOutline: false)
-        XCTAssertEqual(sni, .init(routeMode: .split, splitMode: .sni, dohEnabled: false, note: nil))
+        XCTAssertEqual(sni, .init(routeMode: .split, splitMode: .sni, dohEnabled: false, note: nil, reason: .blocked(.sni)))
         XCTAssertEqual(Plan.suggestion(kinds: [.injected], payloads: [.tls], masterHasOutline: false).splitMode, .sni)
         XCTAssertEqual(Plan.suggestion(kinds: [.dns], payloads: [.tls], masterHasOutline: true),
-                       .init(routeMode: .split, splitMode: .none, dohEnabled: true, note: nil))
+                       .init(routeMode: .split, splitMode: .none, dohEnabled: true, note: nil, reason: .blocked(.dns)))
         XCTAssertEqual(Plan.suggestion(kinds: [], payloads: [.tls], masterHasOutline: true),
-                       .init(routeMode: .split, splitMode: .sni, dohEnabled: false, note: nil))
+                       .init(routeMode: .split, splitMode: .sni, dohEnabled: false, note: nil, reason: .noEvidence),
+                       "no block seen: a default, not a recommendation")
     }
 
     func testIPAndFreezeWantVPN() {
         for kind in [BlockKind.ip, .freeze, .whitelist] {
             XCTAssertEqual(Plan.suggestion(kinds: [kind], payloads: [.tls], masterHasOutline: true).routeMode, .vpn)
             XCTAssertEqual(Plan.suggestion(kinds: [kind], payloads: [.tls], masterHasOutline: false),
-                           .init(routeMode: .split, splitMode: .sni, dohEnabled: false, note: .ipNeedsVPN))
+                           .init(routeMode: .split, splitMode: .sni, dohEnabled: false, note: .ipNeedsVPN, reason: .blocked(kind)))
         }
         XCTAssertEqual(Plan.suggestion(kinds: [.httpBlockPage], payloads: [.http], masterHasOutline: true).routeMode, .vpn)
         XCTAssertEqual(Plan.suggestion(kinds: [.httpBlockPage], payloads: [.http], masterHasOutline: false),
-                       .init(routeMode: .split, splitMode: .none, dohEnabled: true, note: nil))
+                       .init(routeMode: .split, splitMode: .none, dohEnabled: true, note: nil, reason: .blocked(.httpBlockPage)))
     }
 
     func testNonTLSHostsGetVPNOrANote() {
         XCTAssertEqual(Plan.suggestion(kinds: [.sni], payloads: [.ssh], masterHasOutline: true).routeMode, .vpn)
         XCTAssertEqual(Plan.suggestion(kinds: [], payloads: [.ssh, .tcp], masterHasOutline: false),
-                       .init(routeMode: .split, splitMode: .none, dohEnabled: false, note: .splitOnlyChangesTLS))
+                       .init(routeMode: .split, splitMode: .none, dohEnabled: false, note: .splitOnlyChangesTLS, reason: .nonTLS))
+        XCTAssertEqual(Plan.suggestion(kinds: [.sni], payloads: [.ssh], masterHasOutline: true).reason, .nonTLS)
         XCTAssertEqual(Plan.suggestion(kinds: [.sni], payloads: [.ssh, .tls], masterHasOutline: false).splitMode, .sni,
                        "any TLS host gets the TLS rules")
+    }
+
+    func testSuggestionMatchesAProfileOnItsRouteSettingsOnly() {
+        let suggestion = Plan.suggestion(kinds: [.dns], payloads: [.tls], masterHasOutline: false)
+        var profile = SpoofProfile.makeCustom(name: "x", domainPatterns: [], routeMode: .split, splitMode: .none, dohEnabled: true)
+        XCTAssertTrue(suggestion.matches(profile))
+        profile.name = "renamed"
+        profile.domainPatterns = ["*.x.com"]
+        XCTAssertTrue(suggestion.matches(profile), "name and patterns aren't part of it")
+        profile.dohEnabled = false
+        XCTAssertFalse(suggestion.matches(profile))
+
+        let vpn = Plan.suggestion(kinds: [.ip], payloads: [.tls], masterHasOutline: true)
+        profile = .makeCustom(name: "x", domainPatterns: [], routeMode: .vpn, splitMode: .chunk, dohEnabled: false)
+        XCTAssertTrue(vpn.matches(profile), "split mode doesn't apply to VPN")
     }
 
     // MARK: - Warnings
