@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */; };
 		452E2CDC62C91C371BD470CC /* ConnectionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */; };
+		6DCED710EAD206987F079753 /* AddPatternsPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42AE61998982ACE91FE43415 /* AddPatternsPlan.swift */; };
 		93F706FA32B5BFDD9A83BBA7 /* ScannerSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0BA51075483282A0B5EC52 /* ScannerSnapshot.swift */; };
 		71E8D5FC09F62146030B278A /* NetworkState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E5A9E6A1E9D996239EA256 /* NetworkState.swift */; };
 		FE498CCC4B2369EF67B16D39 /* HostVerdict.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57C3F4E72698C3E0E661CF3 /* HostVerdict.swift */; };
@@ -27,6 +28,7 @@
 		6C8525E6C3C24B6F0EBDEFD3 /* PatternMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0009 /* PatternMask.swift */; };
 		7FA87CB92F5F2B4B00819091 /* SpoofyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */; };
 		7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA87CBA2F5F2B4B00819091 /* ContentView.swift */; };
+		6DF26A6612F65D0B113BB932 /* AddPatternsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04276AC6F0D1AFAE46467397 /* AddPatternsSheet.swift */; };
 		FB1E23960208D0BD3C279370 /* HostDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77B7F8850D4A73F5EFB47234 /* HostDetailView.swift */; };
 		659BE181D1A6106A65A8FD12 /* ScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F03042E8BAE183A70AA45B /* ScannerView.swift */; };
 		BFA8D542092B5AB5BCC9BE19 /* ScannerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F8FF79419BBFAD73DB7AF12 /* ScannerModel.swift */; };
@@ -62,6 +64,7 @@
 /* Begin PBXFileReference section */
 		BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadSniffer.swift; sourceTree = "<group>"; };
 		C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionLog.swift; sourceTree = "<group>"; };
+		42AE61998982ACE91FE43415 /* AddPatternsPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPatternsPlan.swift; sourceTree = "<group>"; };
 		BA0BA51075483282A0B5EC52 /* ScannerSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerSnapshot.swift; sourceTree = "<group>"; };
 		18E5A9E6A1E9D996239EA256 /* NetworkState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkState.swift; sourceTree = "<group>"; };
 		A57C3F4E72698C3E0E661CF3 /* HostVerdict.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostVerdict.swift; sourceTree = "<group>"; };
@@ -76,6 +79,7 @@
 		7FA87CB52F5F2B4B00819091 /* Spoofy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spoofy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoofyApp.swift; sourceTree = "<group>"; };
 		7FA87CBA2F5F2B4B00819091 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		04276AC6F0D1AFAE46467397 /* AddPatternsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPatternsSheet.swift; sourceTree = "<group>"; };
 		77B7F8850D4A73F5EFB47234 /* HostDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDetailView.swift; sourceTree = "<group>"; };
 		42F03042E8BAE183A70AA45B /* ScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerView.swift; sourceTree = "<group>"; };
 		1F8FF79419BBFAD73DB7AF12 /* ScannerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerModel.swift; sourceTree = "<group>"; };
@@ -131,6 +135,7 @@
 			children = (
 				BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */,
 				C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */,
+				42AE61998982ACE91FE43415 /* AddPatternsPlan.swift */,
 				BA0BA51075483282A0B5EC52 /* ScannerSnapshot.swift */,
 				18E5A9E6A1E9D996239EA256 /* NetworkState.swift */,
 				A57C3F4E72698C3E0E661CF3 /* HostVerdict.swift */,
@@ -173,6 +178,7 @@
 				7F84E1552F5F370A00EA1BB8 /* Spoofy.entitlements */,
 				7FA87CB82F5F2B4B00819091 /* SpoofyApp.swift */,
 				7FA87CBA2F5F2B4B00819091 /* ContentView.swift */,
+				04276AC6F0D1AFAE46467397 /* AddPatternsSheet.swift */,
 				77B7F8850D4A73F5EFB47234 /* HostDetailView.swift */,
 				42F03042E8BAE183A70AA45B /* ScannerView.swift */,
 				1F8FF79419BBFAD73DB7AF12 /* ScannerModel.swift */,
@@ -329,6 +335,7 @@
 			files = (
 				40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */,
 				452E2CDC62C91C371BD470CC /* ConnectionLog.swift in Sources */,
+				6DCED710EAD206987F079753 /* AddPatternsPlan.swift in Sources */,
 				93F706FA32B5BFDD9A83BBA7 /* ScannerSnapshot.swift in Sources */,
 				71E8D5FC09F62146030B278A /* NetworkState.swift in Sources */,
 				FE498CCC4B2369EF67B16D39 /* HostVerdict.swift in Sources */,
@@ -339,6 +346,7 @@
 				27179ECA4AC9C4E68E346465 /* ConnectionTrace.swift in Sources */,
 				9ABE40A1EF2A7C754CAB5C76 /* ConnectionObserver.swift in Sources */,
 				7FA87CBB2F5F2B4B00819091 /* ContentView.swift in Sources */,
+				6DF26A6612F65D0B113BB932 /* AddPatternsSheet.swift in Sources */,
 				FB1E23960208D0BD3C279370 /* HostDetailView.swift in Sources */,
 				659BE181D1A6106A65A8FD12 /* ScannerView.swift in Sources */,
 				BFA8D542092B5AB5BCC9BE19 /* ScannerModel.swift in Sources */,

@@ -28,6 +28,16 @@ private struct ScannerScreen: View {
     @State private var search = ""
     /// The initial Problems filter falls back to All once, when it would show nothing (§7.1 c).
     @State private var checkedInitialFilter = false
+    @State private var editMode: EditMode = .inactive
+    @State private var selection: Set<String> = []
+    @State private var sheet: AddSheetRequest?
+    @State private var confirmation: String?
+
+    private struct AddSheetRequest: Identifiable {
+        let id = UUID()
+        let rows: [HostRow]
+        let newProfile: Bool
+    }
 
     init(model: @autoclosure @escaping () -> ScannerModel, initialFilter: ScannerFilter) {
         _model = StateObject(wrappedValue: model())
@@ -35,15 +45,33 @@ private struct ScannerScreen: View {
     }
 
     var body: some View {
-        List {
+        List(selection: $selection) {
             if let snapshot = model.snapshot {
                 content(snapshot)
             }
         }
+        .environment(\.editMode, $editMode)
         .navigationTitle("Network Scanner")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Host, IP or SNI")
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                EditButton()
+                    .environment(\.editMode, $editMode)
+            }
+            ToolbarItemGroup(placement: .bottomBar) {
+                if editMode.isEditing {
+                    Button("Add to Profile…") { addSelected(newProfile: false) }
+                        .disabled(selection.isEmpty || settings.customProfiles.isEmpty)
+                    Spacer()
+                    Text("Paused")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("New Profile…") { addSelected(newProfile: true) }
+                        .disabled(selection.isEmpty)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
@@ -58,6 +86,35 @@ private struct ScannerScreen: View {
         }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
+        // A list that reorders under the finger can't be selected from (§7.4).
+        .onChange(of: editMode.isEditing) { editing in
+            model.isPaused = editing
+            if !editing { selection = [] }
+        }
+        .sheet(item: $sheet) { request in
+            AddPatternsSheet(rows: request.rows, startWithNewProfile: request.newProfile,
+                             customProfiles: settings.customProfiles, master: settings.master) { text in
+                confirmation = text
+                editMode = .inactive
+                model.refresh()
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let confirmation {
+                Text(confirmation)
+                    .font(.callout)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 16)
+                    .transition(.opacity)
+            }
+        }
+        .task(id: confirmation) {
+            guard confirmation != nil else { return }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            withAnimation { confirmation = nil }
+        }
         .onReceive(model.$snapshot) { snapshot in
             guard let snapshot, !checkedInitialFilter else { return }
             checkedInitialFilter = true
@@ -103,6 +160,11 @@ private struct ScannerScreen: View {
                 }
                 .contextMenu {
                     Button {
+                        sheet = AddSheetRequest(rows: [row], newProfile: settings.customProfiles.isEmpty)
+                    } label: {
+                        Label("Add to Profile…", systemImage: "plus.circle")
+                    }
+                    Button {
                         UIPasteboard.general.string = row.host
                     } label: {
                         Label("Copy Host", systemImage: "doc.on.doc")
@@ -145,6 +207,12 @@ private struct ScannerScreen: View {
         } footer: {
             Text(ScannerText.notShownFooter)
         }
+    }
+
+    private func addSelected(newProfile: Bool) {
+        let rows = model.snapshot?.rows.filter { selection.contains($0.id) } ?? []
+        guard !rows.isEmpty else { return }
+        sheet = AddSheetRequest(rows: rows, newProfile: newProfile)
     }
 
     private func visibleRows(_ rows: [HostRow]) -> [HostRow] {
