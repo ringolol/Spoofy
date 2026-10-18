@@ -32,6 +32,7 @@ private struct ScannerScreen: View {
     @State private var selection: Set<String> = []
     @State private var sheet: AddSheetRequest?
     @State private var confirmation: String?
+    @State private var showHidden = false
 
     private struct AddSheetRequest: Identifiable {
         let id = UUID()
@@ -72,6 +73,11 @@ private struct ScannerScreen: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button {
+                        showHidden = true
+                    } label: {
+                        Label(hiddenTitle, systemImage: "eye.slash")
+                    }
                     Button(role: .destructive) {
                         model.clear()
                     } label: {
@@ -105,21 +111,9 @@ private struct ScannerScreen: View {
                 DispatchQueue.main.async { CFRunLoopWakeUp(CFRunLoopGetMain()) }
             }
         }
-        .overlay(alignment: .bottom) {
-            if let confirmation {
-                Text(confirmation)
-                    .font(.callout)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom, 16)
-                    .transition(.opacity)
-            }
-        }
-        .task(id: confirmation) {
-            guard confirmation != nil else { return }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            withAnimation { confirmation = nil }
+        .confirmationToast($confirmation)
+        .navigationDestination(isPresented: $showHidden) {
+            HiddenHostsView(model: model)
         }
         .onReceive(model.$snapshot) { snapshot in
             guard let snapshot, !checkedInitialFilter else { return }
@@ -176,13 +170,13 @@ private struct ScannerScreen: View {
                         Label("Copy Host", systemImage: "doc.on.doc")
                     }
                     Button {
-                        model.hide(row.host)
+                        hide(row.host)
                     } label: {
                         Label("Hide", systemImage: "eye.slash")
                     }
                     if let wildcard = BaseDomain.suggestWildcard(for: row.host) {
                         Button {
-                            model.hide(wildcard)
+                            hide(wildcard)
                         } label: {
                             Label("Hide \(wildcard)", systemImage: "eye.slash")
                         }
@@ -194,13 +188,11 @@ private struct ScannerScreen: View {
                 Text("\(snapshot.rows.count) hosts · \(snapshot.activeCount) open now")
             }
         } footer: {
-            if snapshot.hiddenCount > 0 || !settings.hiddenHosts.isEmpty {
-                NavigationLink {
-                    HiddenHostsView(model: model)
-                } label: {
-                    Text("Hidden (\(snapshot.hiddenCount))")
-                        .font(.footnote)
-                }
+            if !settings.hiddenHosts.isEmpty {
+                Button("\(hiddenTitle) ›") { showHidden = true }
+                    .font(.footnote)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
             }
         }
 
@@ -213,6 +205,17 @@ private struct ScannerScreen: View {
         } footer: {
             Text(ScannerText.notShownFooter)
         }
+    }
+
+    /// "Hidden Hosts (3)": hosts in the log that the patterns leave out.
+    private var hiddenTitle: String {
+        let count = model.snapshot?.hiddenCount ?? 0
+        return count > 0 ? "Hidden Hosts (\(count))" : "Hidden Hosts"
+    }
+
+    private func hide(_ pattern: String) {
+        model.hide(pattern)
+        confirmation = "Hid \(pattern). Unhide it from ⋯ › Hidden Hosts."
     }
 
     private func addSelected() {
@@ -231,6 +234,28 @@ private struct ScannerScreen: View {
             }
             guard !query.isEmpty else { return true }
             return row.host.contains(query) || row.ips.contains { $0.contains(query) } || row.snis.contains { $0.contains(query) }
+        }
+    }
+}
+
+extension View {
+    /// Shows `text` in a capsule at the bottom for three seconds, then clears it.
+    func confirmationToast(_ text: Binding<String?>) -> some View {
+        overlay(alignment: .bottom) {
+            if let message = text.wrappedValue {
+                Text(message)
+                    .font(.callout)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 16)
+                    .transition(.opacity)
+            }
+        }
+        .task(id: text.wrappedValue) {
+            guard text.wrappedValue != nil else { return }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            withAnimation { text.wrappedValue = nil }
         }
     }
 }
@@ -376,13 +401,22 @@ private struct HiddenHostsView: View {
     var body: some View {
         List {
             Section {
-                ForEach(settings.hiddenHosts, id: \.self) { Text($0) }
-                    .onDelete { offsets in
-                        var patterns = settings.hiddenHosts
-                        patterns.remove(atOffsets: offsets)
-                        settings.setHiddenHosts(patterns)
-                        model.refresh()
+                if settings.hiddenHosts.isEmpty {
+                    Text("Nothing hidden. Long-press a host in the scanner to hide it.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(settings.hiddenHosts, id: \.self) { pattern in
+                    HStack {
+                        Text(pattern)
+                        Spacer()
+                        Button("Unhide") { unhide([pattern]) }
+                            .buttonStyle(.borderless)
                     }
+                    .swipeActions {
+                        Button("Unhide") { unhide([pattern]) }
+                            .tint(.accentColor)
+                    }
+                }
                 HStack {
                     TextField("example.com or *.example.com", text: $newPattern)
                         .textInputAutocapitalization(.never)
@@ -392,11 +426,15 @@ private struct HiddenHostsView: View {
                         .disabled(newPattern.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             } footer: {
-                Text("Hidden hosts are still carried and logged, just not listed. Same pattern syntax as profiles.")
+                Text("Hidden hosts are still carried and logged, just not listed in the scanner. Same pattern syntax as profiles.")
             }
         }
-        .navigationTitle("Hidden")
-        .toolbar { EditButton() }
+        .navigationTitle("Hidden Hosts")
+    }
+
+    private func unhide(_ patterns: [String]) {
+        settings.setHiddenHosts(settings.hiddenHosts.filter { !patterns.contains($0) })
+        model.refresh()
     }
 
     private func add() {

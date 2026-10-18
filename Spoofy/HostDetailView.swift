@@ -5,6 +5,11 @@ struct HostDetailView: View {
     let host: String
     @ObservedObject var model: ScannerModel
 
+    @EnvironmentObject private var settings: SettingsStore
+    /// The row as it was when the sheet opened, so it doesn't change behind it.
+    @State private var adding: HostRow?
+    @State private var confirmation: String?
+
     var body: some View {
         List {
             if let row = model.row(for: host) {
@@ -21,6 +26,16 @@ struct HostDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
+        .sheet(item: $adding) { row in
+            AddPatternsSheet(rows: [row], master: settings.master) { text in
+                confirmation = text
+            } onClose: {
+                adding = nil
+                // See ScannerView: wakes the run loop so the sheet closes promptly on the Mac.
+                DispatchQueue.main.async { CFRunLoopWakeUp(CFRunLoopGetMain()) }
+            }
+        }
+        .confirmationToast($confirmation)
     }
 
     @ViewBuilder
@@ -61,6 +76,11 @@ struct HostDetailView: View {
                     Spacer()
                     ProfileBadge(name: row.profileName, isDefault: row.isDefaultProfile)
                 }
+            }
+            Button {
+                adding = row
+            } label: {
+                Label("Add to Profile…", systemImage: "plus.circle")
             }
         }
     }
