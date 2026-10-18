@@ -202,8 +202,10 @@ struct ProfileEditView: View {
 
     @EnvironmentObject private var settings: SettingsStore
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
     @State private var profile: SpoofProfile = SpoofProfile.makeDefault()
     @State private var loaded = false
+    @State private var confirmDelete = false
     @State private var domainText: String = ""
     @State private var accessKeyText: String = ""
     @State private var accessKeyError: String?
@@ -213,8 +215,15 @@ struct ProfileEditView: View {
     var body: some View {
         Form {
             if !profile.isDefault {
-                Section("Name") {
+                Section {
                     TextField("Profile Name", text: $profile.name)
+                    Toggle("Enabled", isOn: $profile.isEnabled)
+                } header: {
+                    Text("Name")
+                } footer: {
+                    if !profile.isEnabled {
+                        Text("Off: its domains use Master.")
+                    }
                 }
             }
 
@@ -354,7 +363,22 @@ struct ProfileEditView: View {
                 } footer: {
                     Text(verbatim: "One pattern per line. Examples: *.example.com, example.*, *.youtube.*")
                 }
+
+                Section {
+                    Button("Delete Profile", role: .destructive) { confirmDelete = true }
+                        .frame(maxWidth: .infinity)
+                }
             }
+        }
+        .confirmationDialog("Delete \(profile.name.isEmpty ? "this profile" : profile.name)?",
+                            isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete Profile", role: .destructive) {
+                // Not saved on the way out: `update` ignores an id that's gone.
+                settings.deleteProfiles(ids: [profile.id])
+                dismiss()
+            }
+        } message: {
+            Text("Its domains will use Master.")
         }
         .navigationTitle(profile.isDefault ? "Master" : profile.name)
         .onAppear {
@@ -364,6 +388,8 @@ struct ProfileEditView: View {
             loaded = true
         }
         .onDisappear { save() }
+        // Applies right away: the editor is reached from the scanner too, where the effect is the point.
+        .onChange(of: profile.isEnabled) { _ in save() }
         .onChange(of: scenePhase) { phase in
             if phase != .active { save() }
         }
