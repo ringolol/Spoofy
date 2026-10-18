@@ -2,7 +2,10 @@
 
 A DPI (Deep Packet Inspection) bypass tool for iOS and macOS. Inspired by [SpoofDPI](https://github.com/xvzc/SpoofDPI).
 
-<img src="Docs/clip.gif" height="550">
+<p align="left">
+  <img src="Docs/clip.gif" height="550" />
+  <img src="Docs/scanner.gif" height="550" />
+</p>
 
 Spoofy is a local HTTP/SOCKS5 proxy that bypasses Deep Packet Inspection by fragmenting TLS ClientHello packets or routing selected domains through an Outline server.
 
@@ -107,7 +110,10 @@ DoH works with both route modes. With **Split**, Spoofy resolves the name over D
 
 ### Network Scanner
 
-<img src="Docs/scanner.gif" height="550">
+<p align="left">
+  <img src="Docs/scanner_screen.PNG" width="250" />
+  <img src="Docs/host_detail_screen.PNG" width="250" />
+</p>
 
 Spoofy keeps a log of the connections it carries and judges each host from them. Nothing is sent anywhere and nothing is probed; the scanner only looks at traffic your apps already make.
 
