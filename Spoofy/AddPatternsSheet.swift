@@ -96,22 +96,18 @@ struct AddPatternsSheet: View {
         }
     }
 
-    /// New profile first and in the accent colour, then the existing ones (§7.4).
+    /// New profile is the default and comes first; its settings follow in their own section (§7.4).
     private var targetSection: some View {
         Section {
-            targetRow(.new) {
-                Label("New profile", systemImage: "plus.circle.fill")
-                    .foregroundStyle(Color.accentColor)
-                    .fontWeight(.medium)
-            }
-            ForEach(settings.customProfiles) { profile in
-                targetRow(.existing(profile.id)) {
-                    Text(profile.name.isEmpty ? "Unnamed profile" : profile.name)
-                        .foregroundStyle(profile.isEnabled ? Color.primary : Color.secondary)
+            Picker("Add to", selection: $target) {
+                Label("New Profile", systemImage: "plus.circle").tag(Target.new)
+                if !settings.customProfiles.isEmpty {
+                    Divider()
+                }
+                ForEach(settings.customProfiles) { profile in
+                    Text(profileTitle(profile)).tag(Target.existing(profile.id))
                 }
             }
-        } header: {
-            Text("Add to")
         } footer: {
             if isRecommended, case .existing = target, let profile = targetProfile {
                 if suggestion.matches(profile) {
@@ -123,21 +119,9 @@ struct AddPatternsSheet: View {
         }
     }
 
-    /// Default button style: a Form button takes clicks and highlights across its whole row.
-    private func targetRow(_ value: Target, @ViewBuilder label: () -> some View) -> some View {
-        Button {
-            target = value
-        } label: {
-            HStack {
-                label()
-                Spacer()
-                if target == value {
-                    Image(systemName: "checkmark")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Color.accentColor)
-                }
-            }
-        }
+    private func profileTitle(_ profile: SpoofProfile) -> String {
+        let name = profile.name.isEmpty ? "Unnamed profile" : profile.name
+        return profile.isEnabled ? name : "\(name) (off)"
     }
 
     private var newProfileSection: some View {
@@ -232,6 +216,8 @@ struct AddPatternsSheet: View {
                 }
                 .font(.footnote)
                 .textCase(nil)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
         }
     }
@@ -356,6 +342,8 @@ private struct PatternField: View {
                     }
                 } label: {
                     Image(systemName: "chevron.up.chevron.down")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Suggested patterns")
             }
