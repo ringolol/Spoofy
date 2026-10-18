@@ -49,6 +49,12 @@ struct SettingsView: View {
                 } label: {
                     Label("Add Profile", systemImage: "plus")
                 }
+
+                NavigationLink {
+                    ScannerView(initialFilter: .problems)
+                } label: {
+                    Label("Find Hosts to Add", systemImage: "list.bullet.rectangle")
+                }
             }
 
             Section("Export / Import") {

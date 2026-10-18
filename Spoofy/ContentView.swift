@@ -37,6 +37,10 @@ struct ContentView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     }
+
+                    if let summary = proxyManager.logSummary, summary.hostCount > 0 {
+                        LogSummaryLink(summary: summary)
+                    }
                 }
 
                 // Start/Stop button
@@ -101,5 +105,48 @@ struct ContentView: View {
         case .starting: return "ellipsis"
         case .stopped, .error: return "shield.slash"
         }
+    }
+}
+
+/// `42 hosts · 3 blocked ›`, or the network banner when that takes priority (network-scanner
+/// plan §7.1 b).
+private struct LogSummaryLink: View {
+    let summary: LogSummary
+
+    var body: some View {
+        NavigationLink {
+            ScannerView(initialFilter: summary.blockedCount > 0 ? .problems : .all)
+        } label: {
+            HStack(spacing: 4) {
+                if let banner = ScannerText.shortBanner(for: summary.network) {
+                    Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(banner)")
+                        .foregroundStyle(.orange)
+                } else {
+                    Text(summary.hostCount == 1 ? "1 host" : "\(summary.hostCount) hosts")
+                    if summary.blockedCount > 0 {
+                        Text("· \(summary.blockedCount) blocked")
+                            .foregroundStyle(.red)
+                    }
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.callout)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var accessibilityText: String {
+        if let banner = ScannerText.shortBanner(for: summary.network) {
+            return "\(banner). Open network scanner."
+        }
+        return "\(summary.hostCount) hosts seen, \(summary.blockedCount) blocked. Open network scanner."
     }
 }

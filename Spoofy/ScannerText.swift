@@ -93,6 +93,16 @@ enum ScannerText {
         }
     }
 
+    /// The main-screen line's version of `banner(for:)`.
+    static func shortBanner(for state: NetworkState) -> String? {
+        switch state {
+        case .normal: return nil
+        case .offline: return "No connectivity"
+        case .whitelistMode: return "Whitelist mode"
+        case .outlineDown: return "Outline server unreachable"
+        }
+    }
+
     // MARK: - Connections
 
     static func outcome(_ kind: TraceOutcome.Kind) -> String {
