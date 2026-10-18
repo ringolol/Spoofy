@@ -11,7 +11,9 @@ struct HostRow: Identifiable, Sendable {
     /// Every name seen in ClientHellos to this IP, sorted.
     let snis: [String]
     let kinds: Set<PayloadKindTag>
+    /// Finished connections; `openCount` counts the live ones.
     let connectionCount: Int
+    let openCount: Int
     let lastSeen: Date
     let profileID: UUID
     let profileName: String
@@ -50,9 +52,19 @@ struct ScannerSnapshot: Sendable {
         let network = NetworkState.evaluate(recentGlobal, now: now)
         let hidden = DomainMatcher(patterns: hiddenHosts)
 
+        // A browser keeps its connection open for minutes; list the host before the first one closes.
+        let open = Dictionary(grouping: log.active.values, by: \.host)
+        var records = log.hosts
+        for (host, entries) in open where records[host] == nil {
+            var record = HostRecord(host: host, firstSeen: entries.map(\.startedAt).min()!)
+            record.ports = Set(entries.map(\.port))
+            record.lastSeen = entries.map(\.startedAt).max()!
+            records[host] = record
+        }
+
         var rows: [HostRow] = []
         var hiddenCount = 0
-        for record in log.hosts.values {
+        for record in records.values {
             if !hidden.isEmpty, hidden.matches(record.host) {
                 hiddenCount += 1
                 continue
@@ -65,7 +77,8 @@ struct ScannerSnapshot: Sendable {
             let snis = record.snis.sorted()
             rows.append(HostRow(host: record.host, ports: record.ports.sorted(), ips: record.ips,
                                 sni: snis.first { $0 != record.host }, snis: snis, kinds: kinds,
-                                connectionCount: record.connectionCount, lastSeen: record.lastSeen,
+                                connectionCount: record.connectionCount, openCount: open[record.host]?.count ?? 0,
+                                lastSeen: record.lastSeen,
                                 profileID: profile.id, profileName: profile.name,
                                 isDefaultProfile: profile.isDefault, verdict: verdict, recent: recent))
         }

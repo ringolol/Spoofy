@@ -45,7 +45,9 @@ private struct ScannerScreen: View {
     }
 
     var body: some View {
-        List(selection: $selection) {
+        // Selection only while editing: on the Mac a selected row stays highlighted after a click and
+        // hides the profile badge.
+        List(selection: editMode.isEditing ? $selection : nil) {
             if let snapshot = model.snapshot {
                 content(snapshot)
             }
@@ -269,7 +271,11 @@ struct HostRowView: View {
 
     private var details: String {
         let ports = row.ports.prefix(3).map(String.init).joined(separator: ",")
-        return "\(ports) · \(row.connectionCount) conn · \(ScannerText.ago(row.lastSeen))"
+        var parts = [ports]
+        if row.connectionCount > 0 { parts.append("\(row.connectionCount) conn") }
+        if row.openCount > 0 { parts.append("\(row.openCount) open") }
+        parts.append(ScannerText.ago(row.lastSeen))
+        return parts.joined(separator: " · ")
     }
 
     /// TLS is the default and gets no chip.

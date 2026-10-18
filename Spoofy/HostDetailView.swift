@@ -85,6 +85,10 @@ struct HostDetailView: View {
 
     private func connectionsSection(_ row: HostRow) -> some View {
         Section("Recent connections") {
+            if row.recent.isEmpty {
+                Text("\(row.openCount == 1 ? "1 connection is" : "\(row.openCount) connections are") still open. Results appear when one closes.")
+                    .foregroundStyle(.secondary)
+            }
             ForEach(Array(row.recent.reversed().enumerated()), id: \.offset) { _, trace in
                 ConnectionRow(trace: trace)
             }
