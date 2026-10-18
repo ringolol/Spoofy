@@ -14,13 +14,13 @@ struct AddPatternsSheet: View {
         case new
     }
 
-    @State private var wildcard: [String: Bool] = [:]
-    @State private var target: Target
+    /// The pattern field of each host, starting at its first suggestion.
+    @State private var patterns: [String: String]
+    @State private var target: Target = .new
     @State private var draft: SpoofProfile
     private let note: AddPatternsPlan.Note?
 
-    init(rows: [HostRow], startWithNewProfile: Bool, customProfiles: [SpoofProfile], master: SpoofProfile,
-         onSave: @escaping (String) -> Void) {
+    init(rows: [HostRow], master: SpoofProfile, onSave: @escaping (String) -> Void) {
         self.rows = rows
         self.onSave = onSave
 
@@ -36,15 +36,12 @@ struct AddPatternsSheet: View {
         _draft = State(initialValue: .makeCustom(name: AddPatternsPlan.defaultName(hosts: rows.map(\.host)), domainPatterns: [],
                                                  routeMode: suggestion.routeMode, splitMode: suggestion.splitMode,
                                                  dohEnabled: suggestion.dohEnabled))
-
-        // The profile the hosts already share, else the first one.
-        let shared = Set(rows.map(\.profileID))
-        let initial = customProfiles.first { shared.count == 1 && shared.contains($0.id) } ?? customProfiles.first
-        _target = State(initialValue: startWithNewProfile ? .new : initial.map { .existing($0.id) } ?? .new)
+        _patterns = State(initialValue: Dictionary(rows.map { ($0.host, AddPatternsPlan.suggestions(for: $0.host)[0]) },
+                                                   uniquingKeysWith: { first, _ in first }))
     }
 
     private var hosts: [String] { rows.map(\.host) }
-    private var entries: [AddPatternsPlan.Entry] { AddPatternsPlan.entries(hosts: hosts, wildcard: wildcard) }
+    private var entries: [AddPatternsPlan.Entry] { AddPatternsPlan.entries(hosts: hosts, patterns: patterns) }
 
     private var targetProfile: SpoofProfile? {
         switch target {
@@ -83,42 +80,46 @@ struct AddPatternsSheet: View {
     // MARK: - Sections
 
     private var patternsSection: some View {
-        Section {
+        Section("Patterns") {
             ForEach(rows) { row in
-                VStack(alignment: .leading, spacing: 4) {
-                    if AddPatternsPlan.canWildcard(row.host) {
-                        Picker(row.host, selection: wildcardBinding(row.host)) {
-                            Text(row.host).tag(false)
-                            Text(AddPatternsPlan.pattern(for: row.host, wildcard: true)).tag(true)
-                        }
-                        .pickerStyle(.menu)
-                    } else {
-                        Text(row.host)
-                    }
-                    if let sni = row.sni {
-                        Text("The app asked for \(sni) but connected to the IP itself, so the rule has to be the IP. Set the app to resolve names through the proxy (SOCKS5h / remote DNS) to use domain rules.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                PatternField(row: row, pattern: patternBinding(row.host))
             }
-        } header: {
-            Text("Patterns")
-        } footer: {
-            let patterns = entries.map(\.pattern)
-            Text(patterns.joined(separator: ", "))
         }
     }
 
+    /// New profile first and in the accent colour, then the existing ones (§7.4).
     private var targetSection: some View {
-        Section("Profile") {
-            Picker("Add to", selection: $target) {
-                ForEach(settings.customProfiles) { profile in
-                    Text(profile.name.isEmpty ? "Unnamed profile" : profile.name).tag(Target.existing(profile.id))
+        Section("Add to") {
+            targetRow(.new) {
+                Label("New profile", systemImage: "plus.circle.fill")
+                    .foregroundStyle(Color.accentColor)
+                    .fontWeight(.medium)
+            }
+            ForEach(settings.customProfiles) { profile in
+                targetRow(.existing(profile.id)) {
+                    Text(profile.name.isEmpty ? "Unnamed profile" : profile.name)
+                        .foregroundStyle(profile.isEnabled ? Color.primary : Color.secondary)
                 }
-                Text("New profile").tag(Target.new)
             }
         }
+    }
+
+    private func targetRow(_ value: Target, @ViewBuilder label: () -> some View) -> some View {
+        Button {
+            target = value
+        } label: {
+            HStack {
+                label()
+                Spacer()
+                if target == value {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var newProfileSection: some View {
@@ -173,12 +174,13 @@ struct AddPatternsSheet: View {
 
     // MARK: - Actions
 
-    private func wildcardBinding(_ host: String) -> Binding<Bool> {
-        Binding(get: { wildcard[host] ?? true }, set: { wildcard[host] = $0 })
+    private func patternBinding(_ host: String) -> Binding<String> {
+        Binding(get: { patterns[host] ?? "" }, set: { patterns[host] = $0 })
     }
 
     private var canSave: Bool {
         guard !entries.isEmpty, targetProfile != nil else { return false }
+        guard !rows.contains(where: { AddPatternsPlan.check(patterns[$0.host] ?? "", host: $0.host) == .invalid }) else { return false }
         if target == .new { return !draft.name.trimmingCharacters(in: .whitespaces).isEmpty }
         return true
     }
@@ -202,5 +204,62 @@ struct AddPatternsSheet: View {
 
     private func count(_ n: Int) -> String {
         n == 1 ? "1 pattern" : "\(n) patterns"
+    }
+}
+
+/// One host's pattern: editable, with the suggestions in a menu and a live check below.
+private struct PatternField: View {
+    let row: HostRow
+    @Binding var pattern: String
+
+    var body: some View {
+        let suggestions = AddPatternsPlan.suggestions(for: row.host)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(row.host)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                TextField("Pattern", text: $pattern)
+                    .font(.body.monospaced())
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Menu {
+                    ForEach(suggestions, id: \.self) { suggestion in
+                        Button(suggestion) { pattern = suggestion }
+                    }
+                } label: {
+                    Image(systemName: "chevron.up.chevron.down")
+                }
+                .accessibilityLabel("Suggested patterns")
+            }
+            checkText
+                .font(.caption)
+            if let sni = row.sni {
+                Text("The app asked for \(sni) but connected to the IP itself, so the rule has to be the IP. Set the app to resolve names through the proxy (SOCKS5h / remote DNS) to use domain rules.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private var checkText: some View {
+        switch AddPatternsPlan.check(pattern, host: row.host) {
+        case .exact:
+            Text("Matches only \(row.host)").foregroundStyle(.secondary)
+        case .wider:
+            let normalized = AddPatternsPlan.normalized(pattern)
+            let rest = normalized.dropFirst(2)
+            if normalized.hasPrefix("*."), !rest.contains("*") {
+                Text("Covers \(String(rest)) and its subdomains").foregroundStyle(.secondary)
+            } else {
+                Text("Matches \(row.host) and other hosts").foregroundStyle(.secondary)
+            }
+        case .noMatch:
+            Text("Doesn't match \(row.host)").foregroundStyle(.orange)
+        case .invalid:
+            Text("Not a valid pattern").foregroundStyle(.red)
+        }
     }
 }

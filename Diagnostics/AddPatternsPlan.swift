@@ -32,27 +32,53 @@ enum AddPatternsPlan {
 
     // MARK: - Patterns
 
-    /// IP literals are always exact.
-    static func canWildcard(_ host: String) -> Bool {
-        BaseDomain.suggestWildcard(for: host) != nil
+    /// How an edited pattern relates to the host it was made for.
+    enum PatternCheck: Equatable {
+        /// Matches only the host.
+        case exact
+        /// Matches the host and others.
+        case wider
+        /// Valid, but not for this host (a typo, or meant for something else).
+        case noMatch
+        /// Matches nothing (`DomainMatcher` drops it).
+        case invalid
     }
 
-    static func pattern(for host: String, wildcard: Bool) -> String {
-        wildcard ? BaseDomain.suggestWildcard(for: host) ?? host : host
+    /// `*.test.example.com` (the host and its subdomains), then `*.example.com` (the site). One
+    /// entry when they're the same; IPs and single labels stay exact.
+    static func suggestions(for host: String) -> [String] {
+        var host = host.lowercased()
+        guard let site = BaseDomain.of(host) else { return [host] }
+        if host.hasPrefix("www."), host.count > 4 { host.removeFirst(4) }
+        return host == site ? ["*.\(site)"] : ["*.\(host)", "*.\(site)"]
     }
 
-    /// `wildcard[host]` defaults to true; identical patterns are merged, in host order.
-    static func entries(hosts: [String], wildcard: [String: Bool]) -> [Entry] {
+    static func check(_ pattern: String, host: String) -> PatternCheck {
+        let pattern = normalized(pattern)
+        let matcher = DomainMatcher(patterns: [pattern])
+        if matcher.isEmpty { return .invalid }
+        if !matcher.matches(host) { return .noMatch }
+        return pattern == host.lowercased() ? .exact : .wider
+    }
+
+    /// `patterns[host]` defaults to the first suggestion. Invalid patterns are left out; identical
+    /// ones are merged, in host order.
+    static func entries(hosts: [String], patterns: [String: String]) -> [Entry] {
         var entries: [Entry] = []
         for host in hosts {
-            let pattern = pattern(for: host, wildcard: wildcard[host] ?? true)
-            if let index = entries.firstIndex(where: { $0.pattern.lowercased() == pattern.lowercased() }) {
+            let pattern = normalized(patterns[host] ?? suggestions(for: host)[0])
+            guard !DomainMatcher(patterns: [pattern]).isEmpty else { continue }
+            if let index = entries.firstIndex(where: { $0.pattern == pattern }) {
                 entries[index].hosts.append(host)
             } else {
                 entries.append(Entry(pattern: pattern, hosts: [host]))
             }
         }
         return entries
+    }
+
+    static func normalized(_ pattern: String) -> String {
+        pattern.trimmingCharacters(in: .whitespaces).lowercased()
     }
 
     static func defaultName(hosts: [String]) -> String {

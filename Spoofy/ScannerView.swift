@@ -36,7 +36,6 @@ private struct ScannerScreen: View {
     private struct AddSheetRequest: Identifiable {
         let id = UUID()
         let rows: [HostRow]
-        let newProfile: Bool
     }
 
     init(model: @autoclosure @escaping () -> ScannerModel, initialFilter: ScannerFilter) {
@@ -63,14 +62,11 @@ private struct ScannerScreen: View {
             }
             ToolbarItemGroup(placement: .bottomBar) {
                 if editMode.isEditing {
-                    Button("Add to Profile…") { addSelected(newProfile: false) }
-                        .disabled(selection.isEmpty || settings.customProfiles.isEmpty)
-                    Spacer()
                     Text("Paused")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("New Profile…") { addSelected(newProfile: true) }
+                    Button("Add to Profile…", action: addSelected)
                         .disabled(selection.isEmpty)
                 }
             }
@@ -94,8 +90,7 @@ private struct ScannerScreen: View {
             if !editing { selection = [] }
         }
         .sheet(item: $sheet) { request in
-            AddPatternsSheet(rows: request.rows, startWithNewProfile: request.newProfile,
-                             customProfiles: settings.customProfiles, master: settings.master) { text in
+            AddPatternsSheet(rows: request.rows, master: settings.master) { text in
                 confirmation = text
                 editMode = .inactive
                 model.refresh()
@@ -162,7 +157,7 @@ private struct ScannerScreen: View {
                 }
                 .contextMenu {
                     Button {
-                        sheet = AddSheetRequest(rows: [row], newProfile: settings.customProfiles.isEmpty)
+                        sheet = AddSheetRequest(rows: [row])
                     } label: {
                         Label("Add to Profile…", systemImage: "plus.circle")
                     }
@@ -211,10 +206,10 @@ private struct ScannerScreen: View {
         }
     }
 
-    private func addSelected(newProfile: Bool) {
+    private func addSelected() {
         let rows = model.snapshot?.rows.filter { selection.contains($0.id) } ?? []
         guard !rows.isEmpty else { return }
-        sheet = AddSheetRequest(rows: rows, newProfile: newProfile)
+        sheet = AddSheetRequest(rows: rows)
     }
 
     private func visibleRows(_ rows: [HostRow]) -> [HostRow] {
