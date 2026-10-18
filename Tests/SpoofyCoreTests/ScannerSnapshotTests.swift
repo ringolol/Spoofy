@@ -66,6 +66,8 @@ final class ScannerSnapshotTests: XCTestCase {
         XCTAssertEqual(row.kinds, [.tls, .ssh])
         XCTAssertEqual(row.connectionCount, 3)
         XCTAssertEqual(row.sni, "blocked.example")
+        XCTAssertEqual(row.snis, ["blocked.example"])
+        XCTAssertEqual(row.recent.count, 3)
         XCTAssertEqual(snapshot.activeCount, 1)
     }
 

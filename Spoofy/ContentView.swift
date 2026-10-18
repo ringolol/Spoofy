@@ -70,6 +70,14 @@ struct ContentView: View {
             }
             .navigationTitle("Spoofy")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        ScannerView(initialFilter: .all)
+                    } label: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                    .accessibilityLabel("Network scanner")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink(destination: SettingsView()) {
                         Image(systemName: "gear")

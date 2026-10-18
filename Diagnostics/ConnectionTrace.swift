@@ -348,6 +348,7 @@ struct TraceSummary: Sendable {
 
     /// Handshake RTT, else the transport's minimum RTT.
     var rtt: TimeInterval? { fields.establishment.tcpRTT ?? fields.transfer.minimumRTT }
+    var dnsDuration: TimeInterval? { Self.interval(fields.dnsStart, fields.dnsEnd) }
     /// Connect duration, a coarse stand-in for the RTT.
     var connectDuration: TimeInterval? { Self.interval(fields.connectStart, fields.connectEnd) }
     var tFirstDown: TimeInterval? { Self.interval(fields.payloadSentAt, fields.firstDownAt) }

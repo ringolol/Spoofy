@@ -19,6 +19,9 @@ final class ProxyManager: ObservableObject {
     /// The listener's settings, while a server exists. Port and LAN access need a restart.
     @Published private(set) var listening: (port: UInt16, allowLANAccess: Bool)?
 
+    /// What the scanner shows (network-scanner plan §6.1). Outlives servers, so stop/start keeps it.
+    let connectionLog = ConnectionLog()
+
     private let settings: SettingsStore
     private var proxyServer: ProxyServer?
     private let audioPlayer = BackgroundAudioPlayer()
@@ -50,7 +53,7 @@ final class ProxyManager: ObservableObject {
 
         audioPlayer.start()
 
-        let server = ProxyServer(config: config)
+        let server = ProxyServer(config: config, observer: connectionLog)
         self.proxyServer = server
         listening = (config.port, config.allowLANAccess)
 

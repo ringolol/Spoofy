@@ -8,6 +8,8 @@ struct HostRow: Identifiable, Sendable {
     let ips: [String]
     /// For an IP-literal host: the name its ClientHello asked for.
     let sni: String?
+    /// Every name seen in ClientHellos to this IP, sorted.
+    let snis: [String]
     let kinds: Set<PayloadKindTag>
     let connectionCount: Int
     let lastSeen: Date
@@ -15,6 +17,8 @@ struct HostRow: Identifiable, Sendable {
     let profileName: String
     let isDefaultProfile: Bool
     let verdict: HostVerdict
+    /// The host's latest connections, oldest first.
+    let recent: [ClassifiedTrace]
 }
 
 /// What the main screen shows (§7.1 b).
@@ -56,12 +60,14 @@ struct ScannerSnapshot: Sendable {
             let profile = config.profile(for: record.host)
             let verdict = HostVerdict.verdict(for: record, currentFingerprint: profile.routingFingerprint,
                                               network: network, recentGlobal: recentGlobal, now: now)
-            let kinds = Set(record.recent.elements.map(\.summary.kind.tag)).subtracting([.none])
+            let recent = record.recent.elements
+            let kinds = Set(recent.map(\.summary.kind.tag)).subtracting([.none])
+            let snis = record.snis.sorted()
             rows.append(HostRow(host: record.host, ports: record.ports.sorted(), ips: record.ips,
-                                sni: record.snis.sorted().first { $0 != record.host }, kinds: kinds,
+                                sni: snis.first { $0 != record.host }, snis: snis, kinds: kinds,
                                 connectionCount: record.connectionCount, lastSeen: record.lastSeen,
                                 profileID: profile.id, profileName: profile.name,
-                                isDefaultProfile: profile.isDefault, verdict: verdict))
+                                isDefaultProfile: profile.isDefault, verdict: verdict, recent: recent))
         }
         rows.sort {
             let (l, r) = (rank($0.verdict.status), rank($1.verdict.status))
