@@ -78,7 +78,7 @@ struct ContentView: View {
                     NavigationLink {
                         ScannerView(initialFilter: .all)
                     } label: {
-                        Image(systemName: "list.bullet.rectangle")
+                        Image(systemName: "text.magnifyingglass")
                     }
                     .accessibilityLabel("Network scanner")
                 }

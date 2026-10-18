@@ -53,7 +53,7 @@ struct SettingsView: View {
                 NavigationLink {
                     ScannerView(initialFilter: .problems)
                 } label: {
-                    Label("Find Hosts to Add", systemImage: "list.bullet.rectangle")
+                    Label("Find Hosts to Add", systemImage: "text.magnifyingglass")
                 }
             }
 
