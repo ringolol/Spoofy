@@ -39,7 +39,7 @@ final class SessionTests: XCTestCase {
     /// Tests may end with the session still relaying; close it so nothing outlives the test.
     override func tearDown() {
         if let session, let scope {
-            scope.queue.sync { session.close("test over") }
+            scope.queue.sync { session.close(.proxyStopped) }
         }
         super.tearDown()
     }
@@ -258,8 +258,8 @@ final class SessionTests: XCTestCase {
         start([.data(Self.connectHead)])
         waitFor { self.client.sent.count == 1 }
         scope.queue.sync {
-            session.close("test")
-            session.close("again")
+            session.close(.proxyStopped)
+            session.close(.relayFinished)
         }
         waitForClose()
         client.push(.data(Self.hello))

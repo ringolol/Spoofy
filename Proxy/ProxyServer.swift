@@ -112,7 +112,7 @@ final class ProxyServer {
             let open = Array(self.sessions.values)
             self.sessions.removeAll()
             for session in open {
-                session.queue.async { session.close("proxy stopped") }
+                session.queue.async { session.close(.proxyStopped) }
             }
             Self.logger.info("Proxy server stopped, closed \(open.count, privacy: .public) sessions")
         }
@@ -163,10 +163,10 @@ final class ProxyServer {
                     session.clientReady()
                 case .failed(let error):
                     clientConn.stateUpdateHandler = nil
-                    session.close("client connection failed: \(error.localizedDescription)")
+                    session.close(.clientConnectionFailed(error))
                 case .cancelled:
                     clientConn.stateUpdateHandler = nil
-                    session.close("client connection cancelled")
+                    session.close(.clientConnectionCancelled)
                 default:
                     break
                 }

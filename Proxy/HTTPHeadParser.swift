@@ -19,11 +19,11 @@ struct HTTPHeadParser: InboundParser {
     mutating func feed(_ chunk: Data) -> InboundStep {
         buffer.append(chunk)
         guard let end = buffer.firstRange(of: Self.terminator) else {
-            return buffer.count > Self.maxHead ? Self.fail(431, "Request Header Fields Too Large", "head over \(Self.maxHead) bytes") : .needMore
+            return buffer.count > Self.maxHead ? Self.fail(431, "Request Header Fields Too Large", .headTooLarge) : .needMore
         }
         let headLength = end.upperBound - buffer.startIndex
         guard headLength <= Self.maxHead else {
-            return Self.fail(431, "Request Header Fields Too Large", "head over \(Self.maxHead) bytes")
+            return Self.fail(431, "Request Header Fields Too Large", .headTooLarge)
         }
         let head = Data(buffer[buffer.startIndex..<end.upperBound])
         let leftover = Data(buffer[end.upperBound...])
@@ -39,7 +39,7 @@ struct HTTPHeadParser: InboundParser {
 
     static let connectEstablished = Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8)
 
-    private static func fail(_ status: Int, _ reason: String, _ why: String) -> InboundStep {
+    private static func fail(_ status: Int, _ reason: String, _ why: InboundFailure) -> InboundStep {
         .fail(reply: response(status, reason), reason: why)
     }
 
@@ -52,13 +52,13 @@ struct HTTPHeadParser: InboundParser {
         lines.removeLast(2)
         guard let requestLine = lines.first,
               let line = String(data: requestLine, encoding: .ascii) else {
-            return fail(400, "Bad Request", "request line is not ASCII")
+            return fail(400, "Bad Request", .malformed("request line is not ASCII"))
         }
         let parts = line.split(separator: " ", omittingEmptySubsequences: false)
         guard parts.count == 3,
               !parts[0].isEmpty, parts[0].allSatisfy(isTokenChar),
               parts[2].hasPrefix("HTTP/1.") else {
-            return fail(400, "Bad Request", "malformed request line")
+            return fail(400, "Bad Request", .malformed("malformed request line"))
         }
         let method = String(parts[0])
         let target = parts[1]
@@ -66,14 +66,14 @@ struct HTTPHeadParser: InboundParser {
 
         if method.uppercased() == "CONNECT" {
             guard let dialTarget = parseAuthority(target, defaultPort: nil) else {
-                return fail(400, "Bad Request", "bad CONNECT authority")
+                return fail(400, "Bad Request", .malformed("bad CONNECT authority"))
             }
             return .request(InboundRequest(target: dialTarget, kind: .tunnel, leftover: leftover))
         }
 
         guard target.lowercased().hasPrefix("http://") else {
             // Origin-form or https:// absolute-form: not something a proxy can forward.
-            return fail(400, "Bad Request", "not an absolute http:// target")
+            return fail(400, "Bad Request", .malformed("not an absolute http:// target"))
         }
         let rest = target.dropFirst("http://".count)
         let authorityEnd = rest.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) ?? rest.endIndex
@@ -82,7 +82,7 @@ struct HTTPHeadParser: InboundParser {
             authority = authority[authority.index(after: at)...]  // drop userinfo
         }
         guard let dialTarget = parseAuthority(authority, defaultPort: 80) else {
-            return fail(400, "Bad Request", "bad absolute-form authority")
+            return fail(400, "Bad Request", .malformed("bad absolute-form authority"))
         }
         var path = String(rest[authorityEnd...].prefix { $0 != "#" })
         if path.isEmpty || path.hasPrefix("?") { path = "/" + path }

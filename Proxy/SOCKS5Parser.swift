@@ -69,13 +69,13 @@ struct SOCKS5Parser: InboundParser {
         guard buffer.count >= 2 else { return .needMore }
         guard buffer[0] == 0x05 else {
             state = .done
-            return .fail(reply: nil, reason: "SOCKS version \(buffer[0]) in greeting")
+            return .fail(reply: nil, reason: .malformed("SOCKS version \(buffer[0]) in greeting"))
         }
         let methodsEnd = 2 + Int(buffer[1])
         guard buffer.count >= methodsEnd else { return .needMore }
         guard buffer[2..<methodsEnd].contains(0x00) else {
             state = .done
-            return .fail(reply: Data([0x05, 0xFF]), reason: "no acceptable auth method (offered \(Array(buffer[2..<methodsEnd])))")
+            return .fail(reply: Data([0x05, 0xFF]), reason: .socks5AuthRequired(offered: Array(buffer[2..<methodsEnd])))
         }
         buffer.removeFirst(methodsEnd)
         state = .request
@@ -86,8 +86,8 @@ struct SOCKS5Parser: InboundParser {
     private mutating func parseRequest() -> InboundStep {
         // VER CMD RSV ATYP DST.ADDR DST.PORT
         guard buffer.count >= 4 else { return .needMore }
-        guard buffer[0] == 0x05 else { return fail(Self.generalFailure, "SOCKS version \(buffer[0]) in request") }
-        guard buffer[1] == 0x01 else { return fail(Self.commandNotSupported, "unsupported command \(buffer[1])") }
+        guard buffer[0] == 0x05 else { return fail(Self.generalFailure, .malformed("SOCKS version \(buffer[0]) in request")) }
+        guard buffer[1] == 0x01 else { return fail(Self.commandNotSupported, .socks5Command(buffer[1])) }
 
         let host: String
         let portOffset: Int
@@ -99,27 +99,27 @@ struct SOCKS5Parser: InboundParser {
         case 0x04:
             guard buffer.count >= 22 else { return .needMore }
             guard let address = IPv6Address(Data(buffer[4..<20])) else {
-                return fail(Self.generalFailure, "bad IPv6 address")
+                return fail(Self.generalFailure, .malformed("bad IPv6 address"))
             }
             host = "\(address)"
             portOffset = 20
         case 0x03:
             guard buffer.count >= 5 else { return .needMore }
             let length = Int(buffer[4])
-            guard length > 0 else { return fail(Self.generalFailure, "empty domain") }
+            guard length > 0 else { return fail(Self.generalFailure, .malformed("empty domain")) }
             guard buffer.count >= 5 + length + 2 else { return .needMore }
             let name = buffer[5..<(5 + length)]
             guard name.allSatisfy({ $0 > 0x20 && $0 < 0x7F }) else {
-                return fail(Self.generalFailure, "non-ASCII domain")
+                return fail(Self.generalFailure, .malformed("non-ASCII domain"))
             }
             host = String(decoding: name, as: UTF8.self)
             portOffset = 5 + length
         default:
-            return fail(Self.addressTypeNotSupported, "unsupported address type \(buffer[3])")
+            return fail(Self.addressTypeNotSupported, .socks5AddressType(buffer[3]))
         }
 
         let port = UInt16(buffer[portOffset]) << 8 | UInt16(buffer[portOffset + 1])
-        guard port != 0 else { return fail(Self.generalFailure, "port 0") }
+        guard port != 0 else { return fail(Self.generalFailure, .malformed("port 0")) }
 
         let leftover = Data(buffer[(portOffset + 2)...])
         buffer = []
@@ -127,7 +127,7 @@ struct SOCKS5Parser: InboundParser {
         return .request(InboundRequest(target: DialTarget(host: host, port: port), kind: .tunnel, leftover: leftover))
     }
 
-    private mutating func fail(_ code: UInt8, _ reason: String) -> InboundStep {
+    private mutating func fail(_ code: UInt8, _ reason: InboundFailure) -> InboundStep {
         state = .done
         return .fail(reply: Self.reply(code), reason: reason)
     }

@@ -119,7 +119,7 @@ final class Session {
     }
 
     /// Idempotent; late callbacks after this are ignored.
-    func close(_ reason: String) {
+    func close(_ reason: CloseReason) {
         assertOnQueue()
         guard phase != .closed else { return }
         let reached = phase
@@ -130,7 +130,7 @@ final class Session {
         let seconds = Double(DispatchTime.now().uptimeNanoseconds - startedAt.uptimeNanoseconds) / 1e9
         let route = decision.map { "\($0.outbound)" } ?? "-"
         let traffic = relayStats.map { ", \($0.bytesFromLeft) B up, \($0.bytesFromRight) B down" } ?? ""
-        Self.logger.info("[\(self.label, privacy: .public)] closed in \(reached.rawValue, privacy: .public) after \(String(format: "%.1f", seconds), privacy: .public)s: \(reason, privacy: .public) (route \(route, privacy: .public)\(traffic, privacy: .public))")
+        Self.logger.info("[\(self.label, privacy: .public)] closed in \(reached.rawValue, privacy: .public) after \(String(format: "%.1f", seconds), privacy: .public)s: \(reason.description, privacy: .public) (route \(route, privacy: .public)\(traffic, privacy: .public))")
         let onClose = self.onClose
         self.onClose = nil
         onClose?()
@@ -148,7 +148,7 @@ final class Session {
             ? Self.relayPath(new) != Self.relayPath(decision.outbound)
             : new != decision.outbound
         if changed {
-            close("route changed to \(new)")
+            close(.routeChanged(new))
         }
     }
 
@@ -164,7 +164,7 @@ final class Session {
         let generation = deadlineGeneration
         queue.asyncAfter(deadline: .now() + deps.limits.handshakeTimeout) { [self] in
             guard generation == deadlineGeneration, phase != .closed else { return }
-            close("\(what) deadline (\(deps.limits.handshakeTimeout)s)")
+            close(.deadline(what, seconds: deps.limits.handshakeTimeout))
         }
     }
 
@@ -177,7 +177,7 @@ final class Session {
     private func receiveHandshake() {
         client.receive(minimumIncompleteLength: 1, maximumLength: Self.readSize) { [self] data, _, isComplete, error in
             guard phase == .handshaking else { return }
-            if let error { return close("read error in handshake: \(error.localizedDescription)") }
+            if let error { return close(.handshakeReadError(error)) }
             if let data, !data.isEmpty {
                 if parser == nil {
                     let detected = InboundProtocol(firstByte: data[data.startIndex])
@@ -186,7 +186,7 @@ final class Session {
                 }
                 return handle(parser!.feed(data))
             }
-            if isComplete { return close("client closed during handshake") }
+            if isComplete { return close(.clientClosedInHandshake) }
             receiveHandshake()
         }
     }
@@ -199,7 +199,7 @@ final class Session {
         case .reply(let bytes, let then):
             sendToClient(bytes) { [self] in handle(then) }
         case .fail(let reply, let reason):
-            fail(reply: reply, reason: "handshake failed: \(reason)")
+            fail(reply: reply, reason: .handshakeFailed(reason))
         case .request(let request):
             begin(request)
         }
@@ -215,7 +215,7 @@ final class Session {
         Self.logger.info("[\(self.label, privacy: .public)] \(self.inbound?.rawValue ?? "?", privacy: .public) \(request.kind == .tunnel ? "tunnel" : "http", privacy: .public) → \(String(describing: decision.outbound), privacy: .public)")
 
         if case .reject(let reason) = decision.outbound {
-            return fail(reply: rejectReply(), reason: reason)
+            return fail(reply: rejectReply(), reason: .rejected(reason))
         }
 
         phase = .connecting
@@ -223,7 +223,7 @@ final class Session {
             guard phase == .connecting else { return }
             switch result {
             case .failure(let error):
-                fail(reply: failureReply(for: error), reason: "connect failed: \(error)")
+                fail(reply: failureReply(for: error), reason: .connectFailed(error))
             case .success(let upstream):
                 connected(upstream, request: request, outbound: decision.outbound)
             }
@@ -252,13 +252,13 @@ final class Session {
         let reader = FirstFlightReader(client: client, queue: queue, firstByteTimeout: deps.limits.firstByteTimeout, label: label)
         reader.read(initial: initial) { [self] flight in
             guard phase == .readingFirstFlight else { return }
-            guard let flight else { return close("client closed before its first flight") }
+            guard let flight else { return close(.clientClosedBeforeFirstFlight) }
             phase = .writingFirstFlight
             disarmDeadline()
             SegmentWriter.writeFirstFlight(flight, desync: desync, to: upstream, label: label) { [self] error in
                 guard phase == .writingFirstFlight else { return }
                 // N7: never relay after a failed segment write.
-                if let error { return close("first flight write failed: \(error.localizedDescription)") }
+                if let error { return close(.firstFlightWriteFailed(error)) }
                 relay(upstream, firstClientReceive: reader.inFlightRead)
             }
         }
@@ -270,7 +270,7 @@ final class Session {
         ConnectionRelay.relay(left: client, right: upstream, label: label, queue: queue,
                               idleTimeout: deps.limits.idleTimeout, firstLeftReceive: firstClientReceive) { [self] stats in
             relayStats = stats
-            close(stats.idleTimedOut ? "idle timeout" : "relay finished")
+            close(stats.idleTimedOut ? .idleTimeout : .relayFinished)
         }
     }
 
@@ -280,7 +280,7 @@ final class Session {
         let before = phase
         client.send(content: bytes, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { [self] error in
             guard phase == before else { return }
-            if let error { return close("client write failed: \(error.localizedDescription)") }
+            if let error { return close(.clientWriteFailed(error)) }
             next()
         })
     }
@@ -289,13 +289,13 @@ final class Session {
         let before = phase
         SegmentWriter.write(chunks.filter { !$0.isEmpty }, to: upstream) { [self] error in
             guard phase == before else { return }
-            if let error { return close("upstream write failed: \(error.localizedDescription)") }
+            if let error { return close(.upstreamWriteFailed(error)) }
             next()
         }
     }
 
     /// Sends `reply` (if any) and closes.
-    private func fail(reply: Data?, reason: String) {
+    private func fail(reply: Data?, reason: CloseReason) {
         guard let reply else { return close(reason) }
         phase = .failing
         sendToClient(reply) { [self] in close(reason) }
@@ -321,5 +321,49 @@ final class Session {
         #if DEBUG
         dispatchPrecondition(condition: .onQueue(queue))
         #endif
+    }
+}
+
+/// Why a session closed. `description` is the text of the session's close log line.
+enum CloseReason: CustomStringConvertible {
+    case handshakeReadError(NWError)
+    case clientClosedInHandshake
+    case handshakeFailed(InboundFailure)
+    /// Router `.reject`.
+    case rejected(String)
+    case connectFailed(OutboundError)
+    case clientClosedBeforeFirstFlight
+    case firstFlightWriteFailed(NWError)
+    case relayFinished
+    case idleTimeout
+    case clientWriteFailed(NWError)
+    case upstreamWriteFailed(NWError)
+    /// N8: "handshake" or "first flight".
+    case deadline(String, seconds: TimeInterval)
+    /// U13.
+    case routeChanged(OutboundKind)
+    case proxyStopped
+    case clientConnectionFailed(NWError)
+    case clientConnectionCancelled
+
+    var description: String {
+        switch self {
+        case .handshakeReadError(let error): return "read error in handshake: \(error.localizedDescription)"
+        case .clientClosedInHandshake: return "client closed during handshake"
+        case .handshakeFailed(let failure): return "handshake failed: \(failure)"
+        case .rejected(let reason): return reason
+        case .connectFailed(let error): return "connect failed: \(error)"
+        case .clientClosedBeforeFirstFlight: return "client closed before its first flight"
+        case .firstFlightWriteFailed(let error): return "first flight write failed: \(error.localizedDescription)"
+        case .relayFinished: return "relay finished"
+        case .idleTimeout: return "idle timeout"
+        case .clientWriteFailed(let error): return "client write failed: \(error.localizedDescription)"
+        case .upstreamWriteFailed(let error): return "upstream write failed: \(error.localizedDescription)"
+        case .deadline(let what, let seconds): return "\(what) deadline (\(seconds)s)"
+        case .routeChanged(let outbound): return "route changed to \(outbound)"
+        case .proxyStopped: return "proxy stopped"
+        case .clientConnectionFailed(let error): return "client connection failed: \(error.localizedDescription)"
+        case .clientConnectionCancelled: return "client connection cancelled"
+        }
     }
 }

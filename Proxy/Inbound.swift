@@ -22,7 +22,28 @@ indirect enum InboundStep {
     case reply(Data, then: InboundStep)
     case request(InboundRequest)
     /// Write `reply` (if any), then close.
-    case fail(reply: Data?, reason: String)
+    case fail(reply: Data?, reason: InboundFailure)
+}
+
+/// Why a handshake was refused. Structured so the scanner can say what the proxy couldn't carry
+/// (network-scanner plan §2.5.4); `description` is the log text.
+enum InboundFailure: Equatable, CustomStringConvertible {
+    case socks5AuthRequired(offered: [UInt8])
+    /// 0x02 BIND, 0x03 UDP ASSOCIATE.
+    case socks5Command(UInt8)
+    case socks5AddressType(UInt8)
+    case headTooLarge
+    case malformed(String)
+
+    var description: String {
+        switch self {
+        case .socks5AuthRequired(let offered): return "no acceptable auth method (offered \(offered))"
+        case .socks5Command(let command): return "unsupported command \(command)"
+        case .socks5AddressType(let type): return "unsupported address type \(type)"
+        case .headTooLarge: return "head over \(HTTPHeadParser.maxHead) bytes"
+        case .malformed(let reason): return reason
+        }
+    }
 }
 
 /// Incremental: "need N bytes" checks return `.needMore` without consuming, so input split at
