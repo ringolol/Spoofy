@@ -32,6 +32,12 @@ enum InboundFailure: Equatable, CustomStringConvertible {
     /// 0x02 BIND, 0x03 UDP ASSOCIATE.
     case socks5Command(UInt8)
     case socks5AddressType(UInt8)
+    case socks4(target: DialTarget?)
+    /// `GET /path`: the client treats the proxy as a web server.
+    case httpOriginForm
+    case httpsAbsoluteForm
+    /// `PRI * HTTP/2.0`.
+    case http2Preface
     case headTooLarge
     case malformed(String)
 
@@ -40,6 +46,10 @@ enum InboundFailure: Equatable, CustomStringConvertible {
         case .socks5AuthRequired(let offered): return "no acceptable auth method (offered \(offered))"
         case .socks5Command(let command): return "unsupported command \(command)"
         case .socks5AddressType(let type): return "unsupported address type \(type)"
+        case .socks4: return "SOCKS4 is not supported"
+        case .httpOriginForm: return "not an absolute http:// target (origin-form)"
+        case .httpsAbsoluteForm: return "not an absolute http:// target (https://)"
+        case .http2Preface: return "HTTP/2 connection preface"
         case .headTooLarge: return "head over \(HTTPHeadParser.maxHead) bytes"
         case .malformed(let reason): return reason
         }
@@ -55,17 +65,24 @@ protocol InboundParser {
 enum InboundProtocol: String {
     case http
     case socks5
+    /// Recognised only to refuse it (network-scanner plan §2.5.4).
+    case socks4
 
-    /// The session picks the parser from the first byte: SOCKS5 starts with its version 0x05,
-    /// HTTP with a method token.
+    /// The session picks the parser from the first byte: SOCKS starts with its version (0x05,
+    /// 0x04), HTTP with a method token.
     init(firstByte: UInt8) {
-        self = firstByte == 0x05 ? .socks5 : .http
+        switch firstByte {
+        case 0x05: self = .socks5
+        case 0x04: self = .socks4
+        default: self = .http
+        }
     }
 
     func makeParser() -> InboundParser {
         switch self {
         case .http: return HTTPHeadParser()
         case .socks5: return SOCKS5Parser()
+        case .socks4: return SOCKS4Parser()
         }
     }
 }

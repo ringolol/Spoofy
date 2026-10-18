@@ -54,6 +54,9 @@ struct HTTPHeadParser: InboundParser {
               let line = String(data: requestLine, encoding: .ascii) else {
             return fail(400, "Bad Request", .malformed("request line is not ASCII"))
         }
+        if line == "PRI * HTTP/2.0" {
+            return fail(400, "Bad Request", .http2Preface)
+        }
         let parts = line.split(separator: " ", omittingEmptySubsequences: false)
         guard parts.count == 3,
               !parts[0].isEmpty, parts[0].allSatisfy(isTokenChar),
@@ -72,7 +75,9 @@ struct HTTPHeadParser: InboundParser {
         }
 
         guard target.lowercased().hasPrefix("http://") else {
-            // Origin-form or https:// absolute-form: not something a proxy can forward.
+            // Not something a proxy can forward.
+            if target.hasPrefix("/") { return fail(400, "Bad Request", .httpOriginForm) }
+            if target.lowercased().hasPrefix("https://") { return fail(400, "Bad Request", .httpsAbsoluteForm) }
             return fail(400, "Bad Request", .malformed("not an absolute http:// target"))
         }
         let rest = target.dropFirst("http://".count)

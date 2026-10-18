@@ -356,6 +356,14 @@ final class LoopbackHarnessTests: XCTestCase {
         XCTAssertTrue(client.waitForClose())
     }
 
+    func testSOCKS4ClientGetsRequestRejected() throws {
+        let port = try startProxy(splitMode: .sni)
+        let client = try TestClient(port: port)
+        try client.send(Data([0x04, 0x01, 0x01, 0xBB, 127, 0, 0, 1, 0]))
+        XCTAssertEqual(try client.read(count: 8), Data([0x00, 0x5B, 0, 0, 0, 0, 0, 0]))
+        XCTAssertTrue(client.waitForClose())
+    }
+
     // MARK: - Scenario 3: plain HTTP absolute-form
 
     private func plainHTTPRequest(originPort: UInt16) -> String {

@@ -19,6 +19,7 @@
 		7FA87CBD2F5F2B4D00819091 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBC2F5F2B4D00819091 /* Assets.xcassets */; };
 		7FA87CC02F5F2B4D00819091 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */; };
 		7FE5219A2F749F3300F0BA0C /* SOCKS5Parser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FE521992F749F3300F0BA0C /* SOCKS5Parser.swift */; };
+		5701EADEB0B859A7A4CE30F5 /* SOCKS4Parser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D628CBA76C1200AB1F76C162 /* SOCKS4Parser.swift */; };
 		9542604D3D1E3F43F900321B /* Outbound.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB0005 /* Outbound.swift */; };
 		9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30BB73F9F93A96D1C272D0A4 /* ProxyManager.swift */; };
 		AA00000100000001AABB000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000001AABB000E /* SettingsView.swift */; };
@@ -53,6 +54,7 @@
 		7FA87CBF2F5F2B4D00819091 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		7FE364DF2F6BAC66004F5832 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7FE521992F749F3300F0BA0C /* SOCKS5Parser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOCKS5Parser.swift; sourceTree = "<group>"; };
+		D628CBA76C1200AB1F76C162 /* SOCKS4Parser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOCKS4Parser.swift; sourceTree = "<group>"; };
 		AA00000200000001AABB0002 /* ProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyServer.swift; sourceTree = "<group>"; };
 		5E5510000000000000000002 /* SessionScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionScope.swift; sourceTree = "<group>"; };
 		5E5520000000000000000002 /* ServerConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConnector.swift; sourceTree = "<group>"; };
@@ -143,6 +145,7 @@
 			isa = PBXGroup;
 			children = (
 				7FE521992F749F3300F0BA0C /* SOCKS5Parser.swift */,
+				D628CBA76C1200AB1F76C162 /* SOCKS4Parser.swift */,
 				AA00000200000001AABB0002 /* ProxyServer.swift */,
 				5E5510000000000000000002 /* SessionScope.swift */,
 				5E5520000000000000000002 /* ServerConnector.swift */,
@@ -279,6 +282,7 @@
 				4E0000000000000000000012 /* ProxyConfig.swift in Sources */,
 				4E0000000000000000000013 /* SettingsStore.swift in Sources */,
 				7FE5219A2F749F3300F0BA0C /* SOCKS5Parser.swift in Sources */,
+				5701EADEB0B859A7A4CE30F5 /* SOCKS4Parser.swift in Sources */,
 				9BC7CD453601765EAADC35E2 /* ProxyManager.swift in Sources */,
 				FE700FC47FF852B2809A7451 /* ProxyServer.swift in Sources */,
 				5E5510000000000000000001 /* SessionScope.swift in Sources */,
