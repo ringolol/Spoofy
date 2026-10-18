@@ -10,18 +10,22 @@ import Network
 /// ```
 ///
 /// Phases only move forward: an event for an earlier phase is recorded but doesn't move it back.
-/// Of the terminal events the first wins. `finish` closes the trace; the summary goes to
-/// `onFinish` once, after the last transport report or `reportWait`, whichever comes first (§2.3).
+/// Of the terminal events the first wins. `onPhase` hears every phase change except `ended`;
+/// `finish` closes the trace, and the summary goes to `onFinish` once, after the last transport report or `reportWait`, whichever comes first (§2.3).
 final class ConnectionTrace {
     static let maxAttempts = 4
     static let downPrefixLength = 128
 
     let start: TraceStart
-    private(set) var phase: TracePhase = .created
+    private(set) var phase: TracePhase = .created {
+        didSet { if phase != oldValue, phase != .ended { onPhase?(phase) } }
+    }
 
     private let queue: DispatchQueue
     private let clock: () -> UInt64
     private let reportWait: TimeInterval
+    private let config: DetectionConfig
+    private let onPhase: ((TracePhase) -> Void)?
     private var onFinish: ((TraceSummary) -> Void)?
     private var endReason: EndReason?
     private var fields = TraceFields()
@@ -34,11 +38,14 @@ final class ConnectionTrace {
 
     init(_ start: TraceStart, queue: DispatchQueue,
          clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
-         reportWait: TimeInterval = 1, onFinish: @escaping (TraceSummary) -> Void) {
+         reportWait: TimeInterval = 1, config: DetectionConfig = .standard,
+         onPhase: ((TracePhase) -> Void)? = nil, onFinish: @escaping (TraceSummary) -> Void) {
         self.start = start
         self.queue = queue
         self.clock = clock
         self.reportWait = reportWait
+        self.config = config
+        self.onPhase = onPhase
         self.onFinish = onFinish
     }
 
@@ -206,14 +213,14 @@ extension ConnectionTrace: RelayObserver {
                 stall.resumed = true
                 fields.stall = stall
             }
-        } else if waitingOnServer, silence >= DetectionConfig.stallSeconds {
+        } else if waitingOnServer, silence >= config.stallSeconds {
             fields.stall = StallInfo(at: now, bytesDownAtStall: fields.bytesDown,
                                      phase: fields.firstDownAt == nil ? .beforeResponse : .midStream)
         }
 
         // §2.3 #1: a suspected hello blackhole is when the retransmit count is informative.
         if fields.firstDownAt == nil, !collectedEarly,
-           Self.seconds(now &- sentAt) >= DetectionConfig.helloBlackholeMin,
+           Self.seconds(now &- sentAt) >= config.helloBlackholeMin,
            let pending = pendingTransfer, let reports {
             collectedEarly = true
             pending.collect(queue: queue) { [self] info in fields.transfer.add(info) }
@@ -345,6 +352,10 @@ struct TraceSummary: Sendable {
     var connectDuration: TimeInterval? { Self.interval(fields.connectStart, fields.connectEnd) }
     var tFirstDown: TimeInterval? { Self.interval(fields.payloadSentAt, fields.firstDownAt) }
     var tEnd: TimeInterval? { Self.interval(fields.payloadSentAt, fields.endedAt) }
+    /// Wall clock, for display and the network-state windows.
+    var endedDate: Date {
+        start.startedAt.addingTimeInterval(Self.interval(start.startedAtNanos, fields.endedAt) ?? 0)
+    }
 
     private static func interval(_ from: UInt64?, _ to: UInt64?) -> TimeInterval? {
         guard let from, let to, to >= from else { return nil }

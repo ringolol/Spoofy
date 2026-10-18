@@ -772,4 +772,87 @@ final class LoopbackHarnessTests: XCTestCase {
         XCTAssertEqual(summary.reached, .payloadSent)
         XCTAssertEqual(summary.endReason, .serverReset)
     }
+
+    // MARK: - Outcomes (network-scanner step 5f)
+
+    /// Short waits so a blackhole doesn't take 3 s; loopback RTT is under 10 ms, so nothing is
+    /// ever "early" here (the timing rules are covered by `TraceClassifierTests`).
+    private static let quickDetection: DetectionConfig = {
+        var config = DetectionConfig.standard
+        config.helloBlackholeMin = 0.3
+        return config
+    }()
+
+    private static let hello = ClientHelloBuilder.make(sni: "www.example.com")
+
+    /// Sends a ClientHello to an origin with `behaviour` through a desync route and returns the
+    /// host's latest outcome. `then` runs after the hello is sent; the client is closed after it.
+    private func outcome(for behaviour: LoopbackOrigin.Behaviour, socks: Bool = false,
+                         then: (TestClient) throws -> Void = { _ in }) throws -> TraceOutcome? {
+        let origin = try startOrigin(behaviour)
+        let log = ConnectionLog(config: Self.quickDetection, reportWait: 0.2)
+        let port = try startProxy(splitMode: .firstByte, observer: log)
+        let client = socks ? try socksTunnel(proxyPort: port, target: .ipv4, originPort: origin.port)
+                           : try connectTunnel(proxyPort: port, originPort: origin.port)
+        try client.send(Self.hello)
+        try then(client)
+        client.close()
+        XCTAssertTrue(eventually { log.snapshot().hosts["127.0.0.1"] != nil })
+        XCTAssertTrue(log.snapshot().active.isEmpty)
+        return log.snapshot().hosts["127.0.0.1"]?.recent.elements.last?.outcome
+    }
+
+    func testResetAfterTheHelloIsHelloReset() throws {
+        let result = try outcome(for: .resetOnData) { XCTAssertTrue($0.waitForClose(timeout: 2)) }
+        XCTAssertEqual(result?.kind, .helloReset(early: false))
+    }
+
+    func testFINAfterTheHelloIsHelloSilentClose() throws {
+        let result = try outcome(for: .finishOnData, socks: true) { XCTAssertTrue($0.waitForClose(timeout: 2)) }
+        XCTAssertEqual(result?.kind, .helloSilentClose(early: false))
+    }
+
+    func testSilenceAfterTheHelloIsHelloBlackhole() throws {
+        let result = try outcome(for: .recordAll) { _ in Thread.sleep(forTimeInterval: 0.5) }
+        XCTAssertEqual(result?.kind, .helloBlackhole(retransmits: false))
+    }
+
+    func testClientLeavingQuicklyIsNotABlackhole() throws {
+        XCTAssertEqual(try outcome(for: .recordAll)?.kind, .clientAborted)
+    }
+
+    func testHTTPOnTheTLSTunnelIsInjected() throws {
+        let page = Data("HTTP/1.1 302 Found\r\nLocation: http://warning.example/\r\n\r\n".utf8)
+        let result = try outcome(for: .replyOnData(page)) { XCTAssertEqual(try $0.read(count: page.count), page) }
+        XCTAssertEqual(result?.kind, .injectedResponse(.httpOnTLS))
+    }
+
+    func testAnsweredHelloIsOK() throws {
+        let result = try outcome(for: .echo, socks: true) { XCTAssertEqual(try $0.read(count: Self.hello.count).count, Self.hello.count) }
+        XCTAssertEqual(result?.kind, .ok)
+    }
+
+    func testRefusedDialIsConnectRefused() throws {
+        let probe = try LoopbackOrigin(.recordAll)
+        let deadPort = probe.port
+        probe.stop()
+        let log = ConnectionLog(config: Self.quickDetection, reportWait: 0.2)
+        let port = try startProxy(splitMode: .firstByte, observer: log)
+        let client = try TestClient(port: port)
+        try client.send("CONNECT 127.0.0.1:\(deadPort) HTTP/1.1\r\n\r\n")
+        XCTAssertTrue(client.waitForClose(timeout: 2))
+        XCTAssertTrue(eventually { log.snapshot().hosts["127.0.0.1"] != nil })
+        XCTAssertEqual(log.snapshot().hosts["127.0.0.1"]?.recent.elements.last?.outcome.kind, .connectRefused)
+    }
+
+    func testRefusalsReachTheLog() throws {
+        let log = ConnectionLog()
+        let port = try startProxy(splitMode: .none, observer: log)
+        let client = try TestClient(port: port)
+        try client.send(Data([0x04, 0x01, 0x00, 0x50, 1, 2, 3, 4, 0x00]))
+        XCTAssertEqual(try client.read(count: 8).prefix(2), Data([0x00, 0x5B]))
+        XCTAssertTrue(eventually { log.snapshot().refusals[.socks4]?.count == 1 })
+        XCTAssertEqual(log.snapshot().refusals[.socks4]?.targets, [DialTarget(host: "1.2.3.4", port: 80)])
+        XCTAssertTrue(log.snapshot().hosts.isEmpty)
+    }
 }

@@ -173,6 +173,29 @@ final class ConnectionTraceTests: XCTestCase {
 
     private func advance(_ seconds: Double) { clock += UInt64(seconds * 1e9) }
 
+    func testPhaseChangesAreReportedUntilTheEnd() {
+        var phases: [TracePhase] = []
+        let trace = ConnectionTrace(Self.start, queue: queue, clock: { [unowned self] in clock },
+                                    onPhase: { phases.append($0) }) { [unowned self] in summaries.append($0) }
+        trace.dnsStarted()
+        trace.attemptStarted("1.2.3.4")
+        trace.attemptStarted("::1")
+        trace.attemptReady("1.2.3.4")
+        trace.payloadSent(kind: .ssh)
+        trace.finish(fallback: .clientClosed)
+        XCTAssertEqual(phases, [.resolving, .connecting, .connected, .payloadSent], "ended comes as the summary")
+    }
+
+    func testEndedDateIsOnTheWallClock() {
+        let start = TraceStart(id: 1, startedAt: Date(timeIntervalSince1970: 1_000), startedAtNanos: clock, inbound: .http,
+                               host: "example.com", port: 443, isIPLiteral: false, profileID: UUID(), profileName: "Master",
+                               isDefaultProfile: true, outbound: .direct)
+        let trace = ConnectionTrace(start, queue: queue, clock: { [unowned self] in clock }) { [unowned self] in summaries.append($0) }
+        advance(2.5)
+        trace.finish(fallback: .clientClosed)
+        XCTAssertEqual(summaries.first?.endedDate, Date(timeIntervalSince1970: 1_002.5))
+    }
+
     func testPayloadSentRecordsTheKindOnce() {
         let trace = makeTrace()
         trace.setApplied(.passthrough(.notTLS))
@@ -264,7 +287,7 @@ final class ConnectionTraceTests: XCTestCase {
     func testSilenceAfterThePayloadIsAStallBeforeResponse() throws {
         let trace = makeTrace()
         trace.payloadSent(kind: .tlsOther)
-        advance(DetectionConfig.stallSeconds - 0.1)
+        advance(DetectionConfig.standard.stallSeconds - 0.1)
         trace.relayTick(now: clock)
         trace.finish(fallback: .proxyStopped)
         XCTAssertNil(summaries.first?.stall)
@@ -272,7 +295,7 @@ final class ConnectionTraceTests: XCTestCase {
         summaries = []
         let second = makeTrace()
         second.payloadSent(kind: .tlsOther)
-        advance(DetectionConfig.stallSeconds)
+        advance(DetectionConfig.standard.stallSeconds)
         second.relayTick(now: clock)
         second.finish(fallback: .clientClosed)
         let stall = try XCTUnwrap(summaries.first?.stall)
@@ -287,7 +310,7 @@ final class ConnectionTraceTests: XCTestCase {
         trace.relayed(20_000, fromLeft: false, prefix: Data([0x16]))
         advance(1)
         trace.relayed(50, fromLeft: true, prefix: Data([0x17]))
-        advance(DetectionConfig.stallSeconds)
+        advance(DetectionConfig.standard.stallSeconds)
         trace.relayTick(now: clock)
         trace.relayed(1_000, fromLeft: false, prefix: Data([0x17]))
         trace.relayTick(now: clock)
@@ -385,7 +408,7 @@ final class ConnectionTraceTests: XCTestCase {
             trace.attemptReady("10.0.0.1", reports: reports)
             trace.payloadSent(kind: .tlsOther)
         }
-        advance(DetectionConfig.helloBlackholeMin)
+        advance(DetectionConfig.standard.helloBlackholeMin)
         queue.sync { trace.relayTick(now: clock) }
         queue.sync { trace.relayTick(now: clock) }
         drain()

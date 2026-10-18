@@ -11,8 +11,12 @@ final class LoopbackOrigin {
         case recordAll
         /// Sends a banner on accept, then records.
         case serverFirst(Data)
+        /// Answers the first chunk with this reply and keeps the connection open.
+        case replyOnData(Data)
         /// Answers the first chunk with this reply, then closes its side (FIN).
         case replyAndFinish(Data)
+        /// Closes its side (FIN) on the first chunk, without a reply.
+        case finishOnData
         /// Aborts the connection on the first chunk (RST).
         case resetOnData
     }
@@ -88,10 +92,16 @@ final class LoopbackOrigin {
                 switch self.behaviour {
                 case .echo:
                     conn.send(content: data, completion: .idempotent)
-                case .replyAndFinish(let reply):
+                case .replyOnData(let reply), .replyAndFinish(let reply):
                     // Once per connection: a desynced hello arrives in several segments.
                     if self.lock.withLock({ self.answered.insert(ObjectIdentifier(conn)).inserted }) {
-                        conn.send(content: reply, contentContext: .finalMessage, isComplete: true, completion: .idempotent)
+                        let finish = if case .replyAndFinish = self.behaviour { true } else { false }
+                        conn.send(content: reply, contentContext: finish ? .finalMessage : .defaultMessage,
+                                  isComplete: finish, completion: .idempotent)
+                    }
+                case .finishOnData:
+                    if self.lock.withLock({ self.answered.insert(ObjectIdentifier(conn)).inserted }) {
+                        conn.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .idempotent)
                     }
                 case .resetOnData:
                     conn.forceCancel()

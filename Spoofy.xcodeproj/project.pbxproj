@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */; };
+		452E2CDC62C91C371BD470CC /* ConnectionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */; };
+		96DA2AA064227F0DBA6C7F14 /* TraceClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 587B8552CFD42FB2AADBC132 /* TraceClassifier.swift */; };
+		F91B4503F12B95E32CA85B61 /* BaseDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37821E107D070E23D5D3B6F /* BaseDomain.swift */; };
 		C571DEFBAFAFB09AD5569CD7 /* TransportReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7515537AAE1FEF6494435912 /* TransportReports.swift */; };
 		F00F41E99E4B7B72E8EEF41B /* DetectionConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B443DAC90E2A6EF22A337FBF /* DetectionConfig.swift */; };
 		27179ECA4AC9C4E68E346465 /* ConnectionTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FB4C6AA51DA836556366AB7 /* ConnectionTrace.swift */; };
@@ -51,6 +54,9 @@
 
 /* Begin PBXFileReference section */
 		BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadSniffer.swift; sourceTree = "<group>"; };
+		C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionLog.swift; sourceTree = "<group>"; };
+		587B8552CFD42FB2AADBC132 /* TraceClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceClassifier.swift; sourceTree = "<group>"; };
+		D37821E107D070E23D5D3B6F /* BaseDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseDomain.swift; sourceTree = "<group>"; };
 		7515537AAE1FEF6494435912 /* TransportReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportReports.swift; sourceTree = "<group>"; };
 		B443DAC90E2A6EF22A337FBF /* DetectionConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionConfig.swift; sourceTree = "<group>"; };
 		3FB4C6AA51DA836556366AB7 /* ConnectionTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionTrace.swift; sourceTree = "<group>"; };
@@ -110,6 +116,9 @@
 			isa = PBXGroup;
 			children = (
 				BAA79D558C60C85E3100B0FE /* PayloadSniffer.swift */,
+				C3340F4BB2B6E10E6C94D66B /* ConnectionLog.swift */,
+				587B8552CFD42FB2AADBC132 /* TraceClassifier.swift */,
+				D37821E107D070E23D5D3B6F /* BaseDomain.swift */,
 				7515537AAE1FEF6494435912 /* TransportReports.swift */,
 				B443DAC90E2A6EF22A337FBF /* DetectionConfig.swift */,
 				3FB4C6AA51DA836556366AB7 /* ConnectionTrace.swift */,
@@ -298,6 +307,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				40B61F846A43AB50B63B5FAF /* PayloadSniffer.swift in Sources */,
+				452E2CDC62C91C371BD470CC /* ConnectionLog.swift in Sources */,
+				96DA2AA064227F0DBA6C7F14 /* TraceClassifier.swift in Sources */,
+				F91B4503F12B95E32CA85B61 /* BaseDomain.swift in Sources */,
 				C571DEFBAFAFB09AD5569CD7 /* TransportReports.swift in Sources */,
 				F00F41E99E4B7B72E8EEF41B /* DetectionConfig.swift in Sources */,
 				27179ECA4AC9C4E68E346465 /* ConnectionTrace.swift in Sources */,
